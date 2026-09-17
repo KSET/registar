@@ -43,6 +43,9 @@ services:
       - ./client/src:/app/src
     env_file:
       - .env
+    labels:
+      - "traefik.enable=true"
+      - "DomainName=registar.kset.org"
 
 volumes:
   pgdata:
