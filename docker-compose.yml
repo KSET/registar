@@ -2,9 +2,10 @@ services:
   db:
     image: postgres:16
     ports:
-      # Host 5432 je zauzet lokalnim PostgreSQL-om, pa Docker bazu izlažemo na 5433.
-      # Interni pristup (server -> db:5432) i dalje ide preko Docker mreže i nije pogođen.
-      - "5433:5432"
+      # 5432 i 5433 su već zauzeti (lokalni Postgres / drugi kontejneri), pa
+      # bazu izlažemo na 5434. Interni pristup (server -> db:5432) ide preko
+      # Docker mreže i nije pogođen.
+      - "5434:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -33,14 +34,11 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    labels:
-      - "traefik.enable=true"
-      - "DomainName=registar.kset.org"
 
   client:
     build: ./client
     ports:
-      - "3000:3000"
+      - "3002:3000"
     volumes:
       - ./client/src:/app/src
     env_file:
