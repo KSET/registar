@@ -6,9 +6,11 @@ export default function PendingView({ pending, onUpdated }) {
   const data = pending.fieldData;
   const status = pending.fieldStatus;
 
-  // Check if there are fields that need re-filling (PENDING with empty value)
+  // Fields still PENDING with an empty value need refilling.
+
   const fieldsToRefill = Object.entries(status)
     .filter(([key, s]) => {
+      if (key === 'associationEmail') return false;
       if (s !== 'PENDING') return false;
       const val = data[key];
       if (Array.isArray(val)) return val.length === 0;

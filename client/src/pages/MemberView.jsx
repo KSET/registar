@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { jsonHeaders } from '../api/auth';
+import { jsonHeaders, getToken } from '../api/auth';
 import { useLookupData } from '../useLookupData';
 import { tdStyle } from '../styles';
 import {
@@ -11,6 +11,10 @@ import {
 function formatDate(d) {
   if (!d) return '-';
   return new Date(d).toLocaleDateString('hr');
+}
+
+function linkEmailUrl() {
+  return `/api/auth/google/link?token=${encodeURIComponent(getToken())}`;
 }
 
 const MEMBERSHIP_LABELS = Object.fromEntries(
@@ -126,8 +130,27 @@ export default function MemberView({ member: initialMember, onUpdated }) {
             <tr><td style={tdStyle}>Spol</td><td style={tdStyle}>{member.gender === 'M' ? 'Muški' : 'Ženski'}</td></tr>
             <tr><td style={tdStyle}>Fakultet</td><td style={tdStyle}>{member.faculty}</td></tr>
             <tr><td style={tdStyle}>Telefon</td><td style={tdStyle}>{member.phone}</td></tr>
-            <tr><td style={tdStyle}>Privatni e-mail</td><td style={tdStyle}>{member.privateEmail}</td></tr>
-            <tr><td style={tdStyle}>E-mail pri udruzi</td><td style={tdStyle}>{member.associationEmail}</td></tr>
+            <tr>
+              <td style={tdStyle}>Privatni e-mail</td>
+              <td style={tdStyle}>
+                {member.privateEmail}
+                {!member.privateEmailVerified && (
+                  <>
+                    {' '}(nepotvrđeno — <a href={linkEmailUrl()}>potvrdi Google prijavom</a>)
+                  </>
+                )}
+              </td>
+            </tr>
+            <tr>
+              <td style={tdStyle}>E-mail pri udruzi</td>
+              <td style={tdStyle}>
+                {member.associationEmail || (
+                  <>
+                    nije povezano — <a href={linkEmailUrl()}>poveži KSET e-poštu</a>
+                  </>
+                )}
+              </td>
+            </tr>
             <tr><td style={tdStyle}>Datum učlanjenja (zaključano)</td><td style={tdStyle}>{formatDate(member.memberSince)}</td></tr>
             <tr><td style={tdStyle}>Broj iskaznice (zaključano)</td><td style={tdStyle}>{member.cardNumber}</td></tr>
             <tr>

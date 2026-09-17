@@ -1,9 +1,23 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authenticateToken } = require('../middleware/auth');
+const { logAction, logError } = require('../utils/auditLog');
+const { isKsetEmail } = require('../utils/email');
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// Always set from the verified Google login, never user-editable.
+const NON_EDITABLE_PENDING_FIELDS = ['associationEmail'];
+
+const PENDING_FIELD_VALIDATORS = {
+  oib: (v) => (/^\d{11}$/.test(v) ? null : 'OIB mora imati 11 znamenaka.'),
+  gender: (v) => (['M', 'Z'].includes(v) ? null : 'Nevažeći spol.'),
+  membershipLevel: (v) =>
+    ['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(v) ? null : 'Nevažeća razina članstva.',
+  dietType: (v) =>
+    ['MESOJED', 'VEGETARIJANSTVO', 'VEGANSTVO', 'SVEJED'].includes(v) ? null : 'Nevažeći tip prehrane.',
+};
 
 // GET pending application for current user
 router.get('/me', authenticateToken, async (req, res) => {
@@ -29,8 +43,13 @@ router.post('/', authenticateToken, async (req, res) => {
   try {
     const { email } = req.user;
 
-    const existingMember = await prisma.member.findUnique({
-      where: { associationEmail: email },
+    const existingMember = await prisma.member.findFirst({
+      where: {
+        OR: [
+          { associationEmail: email, associationEmailVerified: true },
+          { privateEmail: email, privateEmailVerified: true },
+        ],
+      },
     });
     if (existingMember) {
       return res.status(400).json({ error: 'Već ste registrirani kao član.' });
@@ -50,6 +69,10 @@ router.post('/', authenticateToken, async (req, res) => {
       allergyIds, dietType, shirtSize, acceptedDocuments,
     } = req.body;
 
+    // @kset.org login -> associationEmail; anything else -> privateEmail.
+    // The other slot stays empty until linked later.
+    const isKset = isKsetEmail(email);
+
     const errors = [];
 
     if (!firstName || !firstName.trim()) errors.push('Ime je obavezno.');
@@ -60,7 +83,7 @@ router.post('/', authenticateToken, async (req, res) => {
     if (!gender || !['M', 'Z'].includes(gender)) errors.push('Spol je obavezan (M ili Ž).');
     if (!faculty || !faculty.trim()) errors.push('Fakultet je obavezan.');
     if (!phone || !phone.trim()) errors.push('Broj telefona je obavezan.');
-    if (!privateEmail || !privateEmail.trim()) errors.push('Privatni e-mail je obavezan.');
+    if (isKset && (!privateEmail || !privateEmail.trim())) errors.push('Privatni e-mail je obavezan.');
     if (!memberSince) errors.push('Datum učlanjenja je obavezan.');
     if (!cardNumber || !cardNumber.trim()) errors.push('Broj iskaznice je obavezan.');
     if (!membershipLevel || !['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(membershipLevel)) {
@@ -80,7 +103,6 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(400).json({ errors });
     }
 
-    // associationEmail is always the Google email - not user-editable
     const fieldData = {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
@@ -90,8 +112,8 @@ router.post('/', authenticateToken, async (req, res) => {
       gender,
       faculty: faculty.trim(),
       phone: phone.trim(),
-      privateEmail: privateEmail.trim(),
-      associationEmail: email, // Fix #3: always use Google email
+      privateEmail: isKset ? privateEmail.trim() : email,
+      associationEmail: isKset ? email : null,
       memberSince,
       cardNumber: cardNumber.trim(),
       membershipLevel,
@@ -122,12 +144,16 @@ router.post('/', authenticateToken, async (req, res) => {
       include: { homeSection: true },
     });
 
+    await logAction(prisma, 'pending_application_created', {
+      details: { pendingId: pending.id, googleEmail: email, homeSectionId: pending.homeSectionId },
+    });
+
     res.status(201).json(pending);
   } catch (err) {
     if (err.code === 'P2002') {
       return res.status(409).json({ error: 'Duplikat — prijava već postoji.' });
     }
-    console.error('Create pending error:', err);
+    await logError(prisma, 'pending_application_create', err, { details: { googleEmail: req.user.email } });
     res.status(500).json({ error: 'Greška na serveru.' });
   }
 });
@@ -156,11 +182,30 @@ router.patch('/me', authenticateToken, async (req, res) => {
     const updatedFieldData = { ...pending.fieldData };
     const updatedFieldStatus = { ...pending.fieldStatus };
 
+    // If associationEmail is unset, privateEmail is the verified login
+    // email instead and must be locked the same way.
+    const nonEditableFields = pending.fieldData.associationEmail
+      ? NON_EDITABLE_PENDING_FIELDS
+      : [...NON_EDITABLE_PENDING_FIELDS, 'privateEmail'];
+
     for (const [key, value] of Object.entries(fields)) {
+      if (nonEditableFields.includes(key)) {
+        return res.status(400).json({ error: `Polje "${key}" se ne može mijenjati.` });
+      }
+
       // Only allow updating fields that are PENDING (rejected fields reset to PENDING)
       if (updatedFieldStatus[key] !== 'PENDING') {
         return res.status(400).json({ error: `Polje "${key}" nije moguće uređivati.` });
       }
+
+      const validate = PENDING_FIELD_VALIDATORS[key];
+      if (validate) {
+        const validationError = validate(value);
+        if (validationError) {
+          return res.status(400).json({ error: validationError });
+        }
+      }
+
       updatedFieldData[key] = value;
     }
 
@@ -179,9 +224,13 @@ router.patch('/me', authenticateToken, async (req, res) => {
       include: { homeSection: true },
     });
 
+    await logAction(prisma, 'pending_application_fields_updated', {
+      details: { pendingId: pending.id, fields: Object.keys(fields) },
+    });
+
     res.json(updated);
   } catch (err) {
-    console.error('Patch pending me error:', err);
+    await logError(prisma, 'pending_application_update', err, { details: { googleEmail: req.user.email } });
     res.status(500).json({ error: 'Greška na serveru.' });
   }
 });
@@ -295,6 +344,11 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
         data: { fieldStatus },
       });
 
+      await logAction(prisma, 'pending_application_review_partial', {
+        userId: memberId,
+        details: { pendingId, decidedFields: Object.keys(decisions) },
+      });
+
       return res.json({
         status: 'partial',
         message: 'Djelomično pregledano. Preostala su neodlučena polja.',
@@ -326,7 +380,9 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
           faculty: data.faculty,
           phone: data.phone,
           privateEmail: data.privateEmail,
+          privateEmailVerified: !data.associationEmail,
           associationEmail: data.associationEmail,
+          associationEmailVerified: Boolean(data.associationEmail),
           memberSince: new Date(data.memberSince),
           cardNumber: data.cardNumber,
           membershipLevel: data.membershipLevel,
@@ -356,6 +412,11 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
         where: { id: pendingId },
       });
 
+      await logAction(prisma, 'pending_application_approved', {
+        userId: memberId,
+        details: { pendingId, newMemberId: member.id, googleEmail: pending.googleEmail },
+      });
+
       return res.json({ status: 'approved', message: 'Član je prihvaćen.', member });
     } else {
       // SOME REJECTED
@@ -383,6 +444,15 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
         },
       });
 
+      const rejectedFields = Object.entries(fieldStatus)
+        .filter(([, s]) => s === 'REJECTED')
+        .map(([field]) => field);
+
+      await logAction(prisma, 'pending_application_fields_rejected', {
+        userId: memberId,
+        details: { pendingId, rejectedFields },
+      });
+
       return res.json({
         status: 'rejected',
         message: 'Neka polja su odbijena. Član mora popuniti odbijena polja.',
@@ -392,7 +462,10 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
     if (err.code === 'P2002') {
       return res.status(409).json({ error: 'Duplikat — član s tim OIB-om, e-mailom ili brojem iskaznice već postoji.' });
     }
-    console.error('Review pending error:', err);
+    await logError(prisma, 'pending_application_review', err, {
+      userId: req.user.memberId,
+      details: { pendingId: req.params.id },
+    });
     res.status(500).json({ error: 'Greška na serveru.' });
   }
 });

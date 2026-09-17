@@ -7,6 +7,7 @@ export default function RegistrationForm({ email, onSubmitted }) {
   const lookups = useLookupData();
   const [errors, setErrors] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const isKset = email.toLowerCase().endsWith('@kset.org');
 
   const [form, setForm] = useState({
     firstName: '',
@@ -72,7 +73,14 @@ export default function RegistrationForm({ email, onSubmitted }) {
   return (
     <div style={{ padding: '2rem', maxWidth: '700px', margin: '0 auto' }}>
       <h2>Pristupna forma</h2>
-      <p>E-mail pri udruzi: <strong>{email}</strong> (postavlja se automatski)</p>
+      {isKset ? (
+        <p>E-mail pri udruzi: <strong>{email}</strong> (postavlja se automatski)</p>
+      ) : (
+        <p>
+          Privatna e-pošta: <strong>{email}</strong> (postavlja se automatski). KSET e-poštu
+          možete kasnije povezati u svom profilu, ako je imate.
+        </p>
+      )}
 
       {errors.length > 0 && (
         <div style={{ color: 'red', marginBottom: '1rem' }}>
@@ -120,9 +128,11 @@ export default function RegistrationForm({ email, onSubmitted }) {
             <input name="phone" value={form.phone} onChange={handleChange} required />
           </label><br /><br />
 
-          <label>Privatni e-mail *<br />
-            <input name="privateEmail" type="email" value={form.privateEmail} onChange={handleChange} required />
-          </label><br /><br />
+          {isKset && (
+            <label>Privatni e-mail *<br />
+              <input name="privateEmail" type="email" value={form.privateEmail} onChange={handleChange} required />
+            </label>
+          )}<br /><br />
         </fieldset>
 
         <fieldset>

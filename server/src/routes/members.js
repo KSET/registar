@@ -1,6 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authenticateToken } = require('../middleware/auth');
+const { logAction, logError } = require('../utils/auditLog');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -111,6 +112,11 @@ router.patch('/me', authenticateToken, async (req, res) => {
         });
 
         membershipChangeResult = 'Promjena članstva poslana voditelju na odobrenje.';
+
+        await logAction(prisma, 'membership_change_requested', {
+          userId: memberId,
+          details: { requestedLevel: newLevel, previousLevel: member.membershipLevel },
+        });
       }
     }
 
@@ -137,6 +143,17 @@ router.patch('/me', authenticateToken, async (req, res) => {
     }
     if ('privateEmail' in data && data.privateEmail && !/^\S+@\S+\.\S+$/.test(data.privateEmail)) {
       return res.status(400).json({ error: 'Nevažeći format privatnog e-maila.' });
+    }
+
+    if ('privateEmail' in data) {
+      // A changed value is unverified until re-confirmed via /google/link.
+      const current = await prisma.member.findUnique({
+        where: { id: memberId },
+        select: { privateEmail: true },
+      });
+      if (current && data.privateEmail !== current.privateEmail) {
+        data.privateEmailVerified = false;
+      }
     }
 
     const relationUpdates = {};
@@ -194,13 +211,18 @@ router.patch('/me', authenticateToken, async (req, res) => {
       select: { id: true, fieldName: true, newValue: true, createdAt: true },
     });
 
+    await logAction(prisma, 'member_profile_updated', {
+      userId: memberId,
+      details: { updatedFields: Object.keys(data), relationsUpdated: Object.keys(relationUpdates) },
+    });
+
     res.json({
       ...updated,
       pendingChanges,
       notice: membershipChangeResult,
     });
   } catch (err) {
-    console.error('Patch member me error:', err);
+    await logError(prisma, 'member_profile_update', err, { userId: req.user.memberId });
     res.status(500).json({ error: 'Greška na serveru.' });
   }
 });

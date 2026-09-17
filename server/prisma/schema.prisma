@@ -86,7 +86,9 @@ model Member {
   faculty            String
   phone              String
   privateEmail       String
-  associationEmail   String          @unique
+  privateEmailVerified Boolean       @default(false)
+  associationEmail   String?         @unique
+  associationEmailVerified Boolean   @default(true)
   memberSince        DateTime        @db.Date
   cardNumber         String          @unique
   membershipLevel    MembershipLevel

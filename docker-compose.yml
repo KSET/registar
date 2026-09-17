@@ -18,16 +18,24 @@ services:
       retries: 5
 
   server:
-    build: ./server
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh -c "cd server && npx nodemon src/index.js"
+    working_dir: /app
     ports:
       - "4000:4000"
+    volumes:
+      - ./server:/app/server
+      - /app/server/node_modules
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./server/src:/app/src
     env_file:
       - .env
+    labels:
+      - "traefik.enable=true"
+      - "DomainName=registar.kset.org"
 
   client:
     build: ./client

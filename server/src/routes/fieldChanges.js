@@ -1,6 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authenticateToken } = require('../middleware/auth');
+const { logAction, logError } = require('../utils/auditLog');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -124,6 +125,11 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
         data: { status: 'APPROVED', reviewedBy: memberId },
       });
 
+      await logAction(prisma, 'field_change_reviewed', {
+        userId: memberId,
+        details: { changeId, fieldName: change.fieldName, decision, targetMemberId: change.memberId },
+      });
+
       return res.json({ message: 'Promjena je odobrena.' });
     } else {
       await prisma.pendingFieldChange.update({
@@ -131,10 +137,18 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
         data: { status: 'REJECTED', reviewedBy: memberId },
       });
 
+      await logAction(prisma, 'field_change_reviewed', {
+        userId: memberId,
+        details: { changeId, fieldName: change.fieldName, decision, targetMemberId: change.memberId },
+      });
+
       return res.json({ message: 'Promjena je odbijena.' });
     }
   } catch (err) {
-    console.error('Review field change error:', err);
+    await logError(prisma, 'field_change_review', err, {
+      userId: req.user.memberId,
+      details: { changeId: req.params.id },
+    });
     res.status(500).json({ error: 'Greška na serveru.' });
   }
 });

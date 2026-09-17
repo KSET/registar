@@ -8,18 +8,41 @@ import RegistrationForm from './pages/RegistrationForm';
 import PendingView from './pages/PendingView';
 import ApprovalDashboard from './pages/ApprovalDashboard';
 
+const LINK_MESSAGES = {
+  success: 'E-mail je uspješno povezan.',
+  already: 'Taj e-mail je već povezan s vašim računom.',
+};
+
+const LINK_ERROR_MESSAGES = {
+  auth_failed: 'Prijava putem Google računa nije uspjela.',
+  invalid_state: 'Povezivanje nije uspjelo, pokušajte ponovo.',
+  member_not_found: 'Račun nije pronađen.',
+  email_taken: 'Taj e-mail je već povezan s drugim računom.',
+  server_error: 'Greška na serveru.',
+};
+
 function App() {
   const [user, setUser] = useState(null);
   const [pending, setPending] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [linkMessage, setLinkMessage] = useState(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
+    const linked = params.get('linked');
+    const linkError = params.get('linkError');
     const path = window.location.pathname;
 
     if (path === '/auth/callback' && token) {
       setToken(token);
+      window.history.replaceState({}, '', '/');
+    }
+
+    if (linked || linkError) {
+      setLinkMessage(
+        linked ? LINK_MESSAGES[linked] || 'E-mail povezan.' : LINK_ERROR_MESSAGES[linkError] || 'Povezivanje nije uspjelo.'
+      );
       window.history.replaceState({}, '', '/');
     }
 
@@ -103,7 +126,13 @@ function App() {
         {user ? (
           <Route
             element={
-              <Layout user={user} isLeaderOrAdmin={isLeaderOrAdmin} onLogout={handleLogout} />
+              <Layout
+                user={user}
+                isLeaderOrAdmin={isLeaderOrAdmin}
+                onLogout={handleLogout}
+                linkMessage={linkMessage}
+                onDismissLinkMessage={() => setLinkMessage(null)}
+              />
             }
           >
             <Route path="/" element={renderHome()} />

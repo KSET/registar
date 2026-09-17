@@ -38,7 +38,7 @@ function buildRequests(applications, fieldChanges) {
     type: 'fieldChange',
     id: c.id,
     personName: `${c.member.firstName} ${c.member.lastName}`,
-    email: c.member.associationEmail,
+    email: c.member.associationEmail || c.member.privateEmail,
     section: c.member.homeSection?.name || '-',
     date: c.createdAt,
     fields: [{ name: c.fieldName, value: c.newValue }],
