@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    allowedHosts: ['registar.kset.org'],
     watch: {
       usePolling: true,
       interval: 300,
