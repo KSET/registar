@@ -32,6 +32,11 @@ export default function Layout({ user, isLeaderOrAdmin, onLogout, linkMessage, o
                   Zahtjevi
                 </NavLink>
               )}
+              {isLeaderOrAdmin && (
+                <NavLink to="/clanovi" className={navClass}>
+                  Članovi
+                </NavLink>
+              )}
             </nav>
           </div>
           <button onClick={handleLogout} className="btn-ghost">

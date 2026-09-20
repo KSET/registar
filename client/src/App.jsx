@@ -7,6 +7,7 @@ import MemberView from './pages/MemberView';
 import RegistrationForm from './pages/RegistrationForm';
 import PendingView from './pages/PendingView';
 import ApprovalDashboard from './pages/ApprovalDashboard';
+import MembersList from './pages/MembersList';
 
 const LINK_MESSAGES = {
   success: 'E-mail je uspješno povezan.',
@@ -140,6 +141,10 @@ function App() {
             <Route
               path="/zahtjevi"
               element={isLeaderOrAdmin ? <ApprovalDashboard /> : <Navigate to="/" replace />}
+            />
+            <Route
+              path="/clanovi"
+              element={isLeaderOrAdmin ? <MembersList isAdmin={appRole === 'ADMINISTRATOR'} /> : <Navigate to="/" replace />}
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

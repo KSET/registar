@@ -238,4 +238,139 @@ router.patch('/me', authenticateToken, async (req, res) => {
   }
 });
 
+function toLimited(m) {
+  return {
+    id: m.id,
+    firstName: m.firstName,
+    lastName: m.lastName,
+    ksetEmail: m.ksetEmail,
+    privateEmail: m.privateEmail,
+    phone: m.phone,
+    homeSection: m.homeSection,
+    limited: true,
+  };
+}
+
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const { appRole, memberId } = req.user;
+
+    if (!appRole || appRole === 'CLAN') {
+      return res.status(403).json({ error: 'Nemate ovlasti.' });
+    }
+
+    const allMembers = await prisma.member.findMany({
+      include: {
+        homeSection: true,
+        faculty: true,
+        sections: { include: { section: true } },
+        teams: { include: { team: true } },
+        drinks: { include: { drink: true } },
+        allergies: { include: { allergy: true } },
+      },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    });
+
+    if (appRole === 'ADMINISTRATOR') {
+      return res.json(allMembers.map((m) => ({ ...m, limited: false })));
+    }
+
+    const leader = await prisma.member.findUnique({
+      where: { id: memberId },
+      select: { managedSectionId: true },
+    });
+
+    if (!leader || !leader.managedSectionId) {
+      return res.status(403).json({ error: 'Niste voditelj nijedne sekcije.' });
+    }
+
+    const sid = leader.managedSectionId;
+
+    const result = allMembers.map((m) => {
+      const isHome = m.homeSectionId === sid;
+      const isAssociated = m.sections.some((s) => s.sectionId === sid);
+      if (isHome || isAssociated) {
+        return { ...m, limited: false };
+      }
+      return toLimited(m);
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('Get members error:', err);
+    res.status(500).json({ error: 'Greška na serveru.' });
+  }
+});
+
+
+router.patch('/:id/role', authenticateToken, async (req, res) => {
+  try {
+    const { appRole: actorRole, memberId: actorId } = req.user;
+
+    if (actorRole !== 'ADMINISTRATOR') {
+      return res.status(403).json({ error: 'Samo administrator može mijenjati uloge.' });
+    }
+
+    const targetId = parseInt(req.params.id);
+    const { appRole, managedSectionId } = req.body;
+
+    if (!['CLAN', 'VODITELJ_SEKCIJE', 'ADMINISTRATOR'].includes(appRole)) {
+      return res.status(400).json({ error: 'Nevažeća uloga.' });
+    }
+
+    const target = await prisma.member.findUnique({ where: { id: targetId } });
+    if (!target) {
+      return res.status(404).json({ error: 'Član nije pronađen.' });
+    }
+
+    if (target.appRole === 'ADMINISTRATOR' && appRole !== 'ADMINISTRATOR') {
+      const adminCount = await prisma.member.count({ where: { appRole: 'ADMINISTRATOR' } });
+      if (adminCount <= 1) {
+        return res.status(400).json({ error: 'Mora postojati barem jedan administrator.' });
+      }
+    }
+
+    let newManagedSectionId = null;
+
+    if (appRole === 'VODITELJ_SEKCIJE') {
+      if (!managedSectionId) {
+        return res.status(400).json({ error: 'Odaberite sekciju koju voditelj vodi.' });
+      }
+      newManagedSectionId = parseInt(managedSectionId);
+
+      const existingLeader = await prisma.member.findFirst({
+        where: {
+          appRole: 'VODITELJ_SEKCIJE',
+          managedSectionId: newManagedSectionId,
+          id: { not: targetId },
+        },
+      });
+      if (existingLeader) {
+        return res.status(400).json({
+          error: `Sekcija već ima voditelja (${existingLeader.firstName} ${existingLeader.lastName}). Prvo ga skinite.`,
+        });
+      }
+    }
+
+    const updated = await prisma.member.update({
+      where: { id: targetId },
+      data: {
+        appRole,
+        managedSectionId: newManagedSectionId,
+      },
+    });
+
+    await logAction(prisma, 'member_role_changed', {
+      userId: actorId,
+      details: { targetId, newRole: appRole, managedSectionId: newManagedSectionId },
+    });
+
+    res.json({ id: updated.id, appRole: updated.appRole, managedSectionId: updated.managedSectionId });
+  } catch (err) {
+    await logError(prisma, 'member_role_change', err, { userId: req.user.memberId, details: { targetId: req.params.id } });
+    res.status(500).json({ error: 'Greška na serveru.' });
+  }
+});
+
+
 module.exports = router;
