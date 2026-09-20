@@ -57,10 +57,13 @@ CREATE TABLE "Member" (
     "dateOfBirth" DATE NOT NULL,
     "address" TEXT NOT NULL,
     "gender" "Gender" NOT NULL,
-    "faculty" TEXT NOT NULL,
+    "facultyId" INTEGER,
+    "facultyOther" TEXT,
     "phone" TEXT NOT NULL,
     "privateEmail" TEXT NOT NULL,
-    "associationEmail" TEXT NOT NULL,
+    "privateEmailVerified" BOOLEAN NOT NULL DEFAULT false,
+    "ksetEmail" TEXT,
+    "ksetEmailVerified" BOOLEAN NOT NULL DEFAULT true,
     "memberSince" DATE NOT NULL,
     "cardNumber" TEXT NOT NULL,
     "membershipLevel" "MembershipLevel" NOT NULL,
@@ -154,6 +157,14 @@ CREATE TABLE "AuditLog" (
     CONSTRAINT "AuditLog_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "Faculty" (
+    "id" SERIAL NOT NULL,
+    "name" TEXT NOT NULL,
+
+    CONSTRAINT "Faculty_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "Section_name_key" ON "Section"("name");
 
@@ -170,7 +181,7 @@ CREATE UNIQUE INDEX "Allergy_name_key" ON "Allergy"("name");
 CREATE UNIQUE INDEX "Member_oib_key" ON "Member"("oib");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Member_associationEmail_key" ON "Member"("associationEmail");
+CREATE UNIQUE INDEX "Member_ksetEmail_key" ON "Member"("ksetEmail");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Member_cardNumber_key" ON "Member"("cardNumber");
@@ -189,6 +200,12 @@ CREATE UNIQUE INDEX "MemberAllergy_memberId_allergyId_key" ON "MemberAllergy"("m
 
 -- CreateIndex
 CREATE UNIQUE INDEX "PendingMember_googleEmail_key" ON "PendingMember"("googleEmail");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Faculty_name_key" ON "Faculty"("name");
+
+-- AddForeignKey
+ALTER TABLE "Member" ADD CONSTRAINT "Member_facultyId_fkey" FOREIGN KEY ("facultyId") REFERENCES "Faculty"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Member" ADD CONSTRAINT "Member_homeSectionId_fkey" FOREIGN KEY ("homeSectionId") REFERENCES "Section"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
