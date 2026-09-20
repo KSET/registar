@@ -1,12 +1,26 @@
 import { FIELD_LABELS } from '../constants';
-import { thStyle, tdStyle } from '../styles';
+import { PageContainer, Card, Alert } from '../components/ui';
 import PendingRefillForm from './PendingRefillForm';
+
+function displayValue(value) {
+  if (Array.isArray(value)) return value.join(', ') || '-';
+  if (typeof value === 'boolean') return value ? 'Da' : 'Ne';
+  return String(value ?? '') || '-';
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    PENDING: { label: 'Na čekanju', cls: 'bg-brand-orange/15 text-brand-orange' },
+    APPROVED: { label: 'Odobreno', cls: 'bg-state-success/15 text-state-success' },
+    REJECTED: { label: 'Odbijeno', cls: 'bg-state-error/15 text-state-error' },
+  };
+  const s = map[status] || map.PENDING;
+  return <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${s.cls}`}>{s.label}</span>;
+}
 
 export default function PendingView({ pending, onUpdated }) {
   const data = pending.fieldData;
   const status = pending.fieldStatus;
-
-  // Fields still PENDING with an empty value need refilling.
 
   const fieldsToRefill = Object.entries(status)
     .filter(([key, s]) => {
@@ -19,42 +33,37 @@ export default function PendingView({ pending, onUpdated }) {
     })
     .map(([key]) => key);
 
-  const hasFieldsToRefill = fieldsToRefill.length > 0;
-
-  if (hasFieldsToRefill) {
+  if (fieldsToRefill.length > 0) {
     return <PendingRefillForm pending={pending} fieldsToRefill={fieldsToRefill} onUpdated={onUpdated} />;
   }
 
   return (
-    <div style={{ padding: '2rem' }}>
-      <h2>Vaša prijava čeka odobrenje</h2>
-      <p>Voditelj sekcije <strong>{pending.homeSection?.name}</strong> mora odobriti vašu prijavu.</p>
-      <br />
-      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Polje</th>
-            <th style={thStyle}>Vrijednost</th>
-            <th style={thStyle}>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {Object.entries(data).map(([key, value]) => {
-            const fieldLabel = FIELD_LABELS[key] || key;
-            const displayValue = Array.isArray(value) ? value.join(', ') : String(value ?? '');
-            const fieldSt = status[key] || 'PENDING';
-            return (
+    <PageContainer title="Prijava na čekanju">
+      <Alert kind="info">
+        Voditelj sekcije <strong>{pending.homeSection?.name}</strong> mora odobriti vašu prijavu.
+        Dok se to ne dogodi, podatke ne možete uređivati.
+      </Alert>
+
+      <Card>
+        <table className="table-base">
+          <thead>
+            <tr>
+              <th>Polje</th>
+              <th>Vrijednost</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(data).map(([key, value]) => (
               <tr key={key}>
-                <td style={tdStyle}>{fieldLabel}</td>
-                <td style={tdStyle}>{displayValue}</td>
-                <td style={tdStyle}>
-                  {fieldSt === 'PENDING' ? 'Na čekanju' : fieldSt === 'APPROVED' ? 'Odobreno' : 'Odbijeno'}
-                </td>
+                <td className="text-content-secondary">{FIELD_LABELS[key] || key}</td>
+                <td>{displayValue(value)}</td>
+                <td><StatusBadge status={status[key] || 'PENDING'} /></td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </PageContainer>
   );
 }

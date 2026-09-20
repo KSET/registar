@@ -1,3 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  body {
+    @apply bg-surface-base text-content-primary;
+    margin: 0;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 focus:ring-offset-surface-base disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-brand-orange text-brand-dark hover:bg-brand-orange-hover;
+  }
+  .btn-secondary {
+    @apply btn bg-surface-overlay text-content-primary border border-surface-border hover:bg-surface-border;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-content-secondary hover:text-content-primary hover:bg-surface-overlay;
+  }
+
+  .card {
+    @apply bg-surface-raised border border-surface-border rounded-lg;
+  }
+
+  .input {
+    @apply w-full rounded-md bg-surface-overlay border border-surface-border px-3 py-2 text-sm text-content-primary placeholder:text-content-muted focus:outline-none focus:border-brand-orange focus:ring-1 focus:ring-brand-orange;
+  }
+  .input-error {
+    @apply border-state-error focus:border-state-error focus:ring-state-error;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-content-secondary mb-1;
+  }
+
+  .field-error {
+    @apply mt-1 text-xs text-state-error;
+  }
+
+  .table-base {
+    @apply w-full border-collapse text-sm;
+  }
+  .table-base th {
+    @apply text-left font-semibold text-content-secondary px-3 py-2 border-b border-surface-border;
+  }
+  .table-base td {
+    @apply px-3 py-2 border-b border-surface-border text-content-primary;
+  }
+
+  .btn-decision {
+    @apply px-3 py-1.5 rounded-md text-sm font-medium border-2 bg-surface-base transition-colors;
+  }
+  .btn-decision-approve {
+    @apply btn-decision border-state-success text-state-success hover:bg-state-success/10;
+  }
+  .btn-decision-approve-active {
+    @apply btn-decision border-state-success bg-state-success text-brand-dark;
+  }
+  .btn-decision-reject {
+    @apply btn-decision border-state-error text-state-error hover:bg-state-error/10;
+  }
+  .btn-decision-reject-active {
+    @apply btn-decision border-state-error bg-state-error text-white;
+  }
+}

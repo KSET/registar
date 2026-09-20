@@ -43,3 +43,13 @@ export const DIET_TYPE_OPTIONS = [
   { value: 'VEGANSTVO', label: 'Veganstvo' },
   { value: 'SVEJED', label: 'Svejed' },
 ];
+
+export const SHIRT_SIZE_OPTIONS = [
+  { value: 'XS', label: 'XS' },
+  { value: 'S', label: 'S' },
+  { value: 'M', label: 'M' },
+  { value: 'L', label: 'L' },
+  { value: 'XL', label: 'XL' },
+  { value: 'XXL', label: 'XXL' },
+  { value: 'XXXL', label: 'XXXL' },
+];

@@ -92,7 +92,7 @@ function App() {
   };
 
   if (loading) {
-    return <div style={{ padding: '2rem', textAlign: 'center' }}>Učitavanje...</div>;
+    return <div className="min-h-screen flex items-center justify-center text-content-secondary">Učitavanje...</div>;
   }
 
   const appRole = user?.member?.appRole || user?.appRole;
@@ -103,6 +103,7 @@ function App() {
       return (
         <MemberView
           member={user.member}
+          isAdmin={appRole === 'ADMINISTRATOR'}
           onUpdated={(updated) =>
             setUser((prev) => ({ ...prev, member: updated }))
           }

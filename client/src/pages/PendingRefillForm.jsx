@@ -1,46 +1,95 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { jsonHeaders } from '../api/auth';
 import { useLookupData } from '../useLookupData';
-import { FIELD_LABELS } from '../constants';
-import { tdStyle } from '../styles';
-import FieldRenderer from '../components/FieldRenderer';
+import { useForm } from '../useForm';
+import { memberValidators } from '../validation';
+import { FIELD_LABELS, GENDER_OPTIONS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
+import { PageContainer, Card, Alert } from '../components/ui';
+import { TextField, SelectField, MultiCheckDropdown, CheckboxField } from '../components/Field';
+
+function displayValue(value) {
+  if (Array.isArray(value)) return value.join(', ') || '-';
+  if (typeof value === 'boolean') return value ? 'Da' : 'Ne';
+  return String(value ?? '') || '-';
+}
+
+function RefillField({ fieldKey, form, lookups }) {
+  const { values, handleChange, handleBlur, showError } = form;
+  const common = {
+    name: fieldKey,
+    value: values[fieldKey],
+    onChange: handleChange,
+    onBlur: handleBlur,
+    error: showError(fieldKey),
+  };
+  const label = FIELD_LABELS[fieldKey] || fieldKey;
+
+  switch (fieldKey) {
+    case 'gender':
+      return <SelectField {...common} label={label} required options={GENDER_OPTIONS} />;
+    case 'membershipLevel':
+      return <SelectField {...common} label={label} required options={MEMBERSHIP_LEVEL_OPTIONS} />;
+    case 'dietType':
+      return <SelectField {...common} label={label} required options={DIET_TYPE_OPTIONS} />;
+    case 'shirtSize':
+      return <SelectField {...common} label={label} required options={SHIRT_SIZE_OPTIONS} />;
+    case 'homeSectionId':
+      return <SelectField {...common} label={label} required
+        options={lookups.sections.map((s) => ({ value: s.id, label: s.name }))} />;
+    case 'sectionIds':
+      return <MultiCheckDropdown {...common} label={label} options={lookups.sections} />;
+    case 'teamIds':
+      return <MultiCheckDropdown {...common} label={label} options={lookups.teams} />;
+    case 'drinkIds':
+      return <MultiCheckDropdown {...common} label={label} required options={lookups.drinks} />;
+    case 'allergyIds':
+      return <MultiCheckDropdown {...common} label={label} options={lookups.allergies} />;
+    case 'acceptedDocuments':
+      return <CheckboxField {...common} label="Prihvaćam akte i dokumente udruge" />;
+    case 'dateOfBirth':
+    case 'memberSince':
+    case 'fullMemberSince':
+      return <TextField {...common} label={label} type="date" required={fieldKey !== 'fullMemberSince'} />;
+    case 'privateEmail':
+      return <TextField {...common} label={label} type="email" required />;
+    case 'oib':
+      return <TextField {...common} label={label} required maxLength={11} />;
+    default:
+      return <TextField {...common} label={label} required />;
+  }
+}
 
 export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }) {
   const lookups = useLookupData();
-  const [form, setForm] = useState({});
-  const [errors, setErrors] = useState([]);
+  const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    // Initialize form with empty values for fields that need refilling
-    const initial = {};
-    for (const key of fieldsToRefill) {
-      const val = pending.fieldData[key];
-      if (Array.isArray(val)) initial[key] = [];
-      else if (typeof val === 'boolean') initial[key] = false;
-      else initial[key] = '';
-    }
-    setForm(initial);
-  }, []);
+  const initialValues = {};
+  for (const key of fieldsToRefill) {
+    const val = pending.fieldData[key];
+    if (Array.isArray(val)) initialValues[key] = [];
+    else if (typeof val === 'boolean') initialValues[key] = false;
+    else initialValues[key] = '';
+  }
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
-  };
+  const form = useForm(initialValues, memberValidators);
 
-  const handleMultiSelect = (e, field) => {
-    const selected = Array.from(e.target.selectedOptions, (o) => parseInt(o.value));
-    setForm((prev) => ({ ...prev, [field]: selected }));
-  };
+  const approvedFields = Object.entries(pending.fieldData).filter(
+    ([key]) => pending.fieldStatus[key] === 'APPROVED'
+  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setErrors([]);
-    setSubmitting(true);
+    setSubmitError('');
 
+    if (!form.validateAll(fieldsToRefill)) {
+      setSubmitError('Ispravite označena polja prije slanja.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      // Convert homeSectionId to int if present
-      const fields = { ...form };
+      const fields = { ...form.values };
       if (fields.homeSectionId) {
         fields.homeSectionId = parseInt(fields.homeSectionId);
       }
@@ -53,63 +102,52 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
 
       const data = await res.json();
       if (!res.ok) {
-        setErrors([data.error || 'Greška.']);
+        setSubmitError(data.error || 'Greška.');
         return;
       }
       onUpdated(data);
     } catch (err) {
-      setErrors(['Mrežna greška.']);
+      setSubmitError('Mrežna greška.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '700px', margin: '0 auto' }}>
-      <h2>Popunite odbijena polja</h2>
-      <p>Voditelj sekcije je odbio neka polja. Molimo ispunite ih ponovo.</p>
+    <PageContainer title="Popunite odbijena polja">
+      <Alert kind="info">
+        Voditelj sekcije je odbio neka polja. Molimo ispunite ih ponovo. Odobrena polja ostaju nepromijenjena.
+      </Alert>
 
-      {errors.length > 0 && (
-        <div style={{ color: 'red', marginBottom: '1rem' }}>
-          {errors.map((err, i) => <p key={i}>{err}</p>)}
-        </div>
+      {submitError && <Alert kind="error">{submitError}</Alert>}
+
+      {approvedFields.length > 0 && (
+        <Card title="Odobrena polja (ne mogu se mijenjati)">
+          <table className="table-base">
+            <tbody>
+              {approvedFields.map(([key, value]) => (
+                <tr key={key}>
+                  <td className="text-content-secondary">{FIELD_LABELS[key] || key}</td>
+                  <td>{displayValue(value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
       )}
 
-      <br />
-      <h3>Odobrena polja (ne mogu se mijenjati):</h3>
-      <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: '1rem' }}>
-        <tbody>
-          {Object.entries(pending.fieldData)
-            .filter(([key]) => pending.fieldStatus[key] === 'APPROVED')
-            .map(([key, value]) => (
-              <tr key={key}>
-                <td style={tdStyle}>{FIELD_LABELS[key] || key}</td>
-                <td style={tdStyle}>
-                  {Array.isArray(value) ? value.join(', ') : String(value ?? '')}
-                </td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
-
-      <h3>Polja za popuniti:</h3>
-      <form onSubmit={handleSubmit}>
-        {fieldsToRefill.map((key) => (
-          <div key={key} style={{ marginBottom: '1rem' }}>
-            <FieldRenderer
-              fieldKey={key}
-              form={form}
-              onChange={handleChange}
-              onMultiSelect={handleMultiSelect}
-              lookups={lookups}
-            />
+      <Card title="Polja za popuniti">
+        <form onSubmit={handleSubmit}>
+          {fieldsToRefill.map((key) => (
+            <RefillField key={key} fieldKey={key} form={form} lookups={lookups} />
+          ))}
+          <div className="flex justify-center">
+            <button type="submit" disabled={submitting} className="btn-primary mt-2">
+              {submitting ? 'Šaljem...' : 'Pošalji ispravke'}
+            </button>
           </div>
-        ))}
-        <br />
-        <button type="submit" disabled={submitting} style={{ padding: '0.5rem 2rem', fontSize: '1rem' }}>
-          {submitting ? 'Šaljem...' : 'Pošalji ispravke'}
-        </button>
-      </form>
-    </div>
+        </form>
+      </Card>
+    </PageContainer>
   );
 }
