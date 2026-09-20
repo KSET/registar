@@ -3,6 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const { authenticateToken } = require('../middleware/auth');
 const { logAction, logError } = require('../utils/auditLog');
 const { isKsetEmail } = require('../utils/email');
+const { isValidOib } = require('../utils/oib');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -11,7 +12,7 @@ const prisma = new PrismaClient();
 const NON_EDITABLE_PENDING_FIELDS = ['ksetEmail'];
 
 const PENDING_FIELD_VALIDATORS = {
-  oib: (v) => (/^\d{11}$/.test(v) ? null : 'OIB mora imati 11 znamenaka.'),
+  oib: (v) => (isValidOib(v) ? null : 'OIB nije ispravan.'),
   gender: (v) => (['M', 'Z'].includes(v) ? null : 'Nevažeći spol.'),
   membershipLevel: (v) =>
     ['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(v) ? null : 'Nevažeća razina članstva.',
@@ -77,7 +78,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
     if (!firstName || !firstName.trim()) errors.push('Ime je obavezno.');
     if (!lastName || !lastName.trim()) errors.push('Prezime je obavezno.');
-    if (!oib || !/^\d{11}$/.test(oib)) errors.push('OIB mora imati 11 znamenaka.');
+    if (!oib || !isValidOib(oib)) errors.push('OIB nije ispravan.');
     if (!dateOfBirth) errors.push('Datum rođenja je obavezan.');
     if (!address || !address.trim()) errors.push('Adresa je obavezna.');
     if (!gender || !['M', 'Z'].includes(gender)) errors.push('Spol je obavezan (M ili Ž).');
