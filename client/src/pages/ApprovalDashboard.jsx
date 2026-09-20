@@ -185,41 +185,43 @@ export default function ApprovalDashboard() {
 
             {expandedKey === r.key && (
               <div className="border-t border-surface-border px-5 py-4">
-                <table className="table-base mb-4">
-                  <thead>
-                    <tr>
-                      <th>Polje</th>
-                      <th>Vrijednost</th>
-                      <th className="text-right">Odluka</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {r.fields.map((f) => (
-                      <tr key={f.name}>
-                        <td className="text-content-secondary">{FIELD_LABELS[f.name] || f.name}</td>
-                        <td>{displayValue(f.name, f.value)}</td>
-                        <td>
-                          <div className="flex gap-2 justify-end">
-                            <button
-                              type="button"
-                              onClick={() => setDecision(f.name, 'APPROVED')}
-                              className={decisions[f.name] === 'APPROVED' ? 'btn-decision-approve-active' : 'btn-decision-approve'}
-                            >
-                              Prihvati
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDecision(f.name, 'REJECTED')}
-                              className={decisions[f.name] === 'REJECTED' ? 'btn-decision-reject-active' : 'btn-decision-reject'}
-                            >
-                              Odbij
-                            </button>
-                          </div>
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="table-base mb-4">
+                    <thead>
+                      <tr>
+                        <th>Polje</th>
+                        <th>Vrijednost</th>
+                        <th className="text-right">Odluka</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {r.fields.map((f) => (
+                        <tr key={f.name}>
+                          <td className="text-content-secondary">{FIELD_LABELS[f.name] || f.name}</td>
+                          <td>{displayValue(f.name, f.value)}</td>
+                          <td>
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                type="button"
+                                onClick={() => setDecision(f.name, 'APPROVED')}
+                                className={decisions[f.name] === 'APPROVED' ? 'btn-decision-approve-active' : 'btn-decision-approve'}
+                              >
+                                Prihvati
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDecision(f.name, 'REJECTED')}
+                                className={decisions[f.name] === 'REJECTED' ? 'btn-decision-reject-active' : 'btn-decision-reject'}
+                              >
+                                Odbij
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-content-muted">

@@ -38,24 +38,26 @@ export default function PendingView({ pending, onUpdated }) {
       </Alert>
 
       <Card>
-        <table className="table-base">
-          <thead>
-            <tr>
-              <th>Polje</th>
-              <th>Vrijednost</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(data).map(([key, value]) => (
-              <tr key={key}>
-                <td className="text-content-secondary">{FIELD_LABELS[key] || key}</td>
-                <td>{displayValue(value)}</td>
-                <td><StatusBadge status={status[key] || 'PENDING'} /></td>
+        <div className="overflow-x-auto">
+          <table className="table-base">
+            <thead>
+              <tr>
+                <th>Polje</th>
+                <th>Vrijednost</th>
+                <th>Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {Object.entries(data).map(([key, value]) => (
+                <tr key={key}>
+                  <td className="text-content-secondary">{FIELD_LABELS[key] || key}</td>
+                  <td>{displayValue(value)}</td>
+                  <td><StatusBadge status={status[key] || 'PENDING'} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Card>
     </PageContainer>
   );

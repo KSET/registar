@@ -84,7 +84,8 @@ export default function MembersList({ isAdmin }) {
         />
       </div>
 
-      <Card className="!p-0 overflow-hidden">
+      {/* Desktop */}
+      <Card className="!p-0 overflow-hidden hidden md:block">
         <table className="table-base">
           <thead>
             <tr>
@@ -111,6 +112,25 @@ export default function MembersList({ isAdmin }) {
           </tbody>
         </table>
       </Card>
+
+      {/* Mobile */}
+      <div className="md:hidden space-y-3">
+        {filtered.length === 0 && (
+          <Card><p className="text-content-muted">Nema članova.</p></Card>
+        )}
+        {filtered.map((m) => (
+          <Card key={m.id} className="!mb-0 cursor-pointer hover:bg-surface-overlay" >
+            <div onClick={() => setSelected(m)}>
+              <div className="font-medium mb-1">{m.firstName} {m.lastName}</div>
+              <div className="text-sm text-content-secondary">{m.ksetEmail || m.privateEmail || '-'}</div>
+              <div className="text-sm text-content-secondary">{m.phone}</div>
+              <div className="text-sm text-content-muted mt-1">{m.homeSection?.name || '-'}</div>
+              <div className="text-brand-orange text-sm mt-2">Detalji →</div>
+            </div>
+          </Card>
+        ))}
+      </div>
+
     </PageContainer>
   );
 }
