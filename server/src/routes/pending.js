@@ -197,8 +197,8 @@ router.patch('/me', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: `Polje "${key}" se ne može mijenjati.` });
       }
 
-      // Only allow updating fields that are PENDING (rejected fields reset to PENDING)
-      if (updatedFieldStatus[key] !== 'PENDING') {
+      // Members may only refill fields the leader REJECTED.
+      if (updatedFieldStatus[key] !== 'REJECTED') {
         return res.status(400).json({ error: `Polje "${key}" nije moguće uređivati.` });
       }
 
@@ -211,6 +211,7 @@ router.patch('/me', authenticateToken, async (req, res) => {
       }
 
       updatedFieldData[key] = value;
+      updatedFieldStatus[key] = 'PENDING';
     }
 
     // Update homeSectionId on the record if it changed
@@ -437,7 +438,6 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
           } else {
             updatedFieldData[field] = '';
           }
-          updatedFieldStatus[field] = 'PENDING';
         }
       }
 

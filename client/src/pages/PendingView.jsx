@@ -23,14 +23,7 @@ export default function PendingView({ pending, onUpdated }) {
   const status = pending.fieldStatus;
 
   const fieldsToRefill = Object.entries(status)
-    .filter(([key, s]) => {
-      if (key === 'ksetEmail') return false;
-      if (s !== 'PENDING') return false;
-      const val = data[key];
-      if (Array.isArray(val)) return val.length === 0;
-      if (typeof val === 'boolean') return val === false;
-      return !val || val === '';
-    })
+    .filter(([, s]) => s === 'REJECTED')
     .map(([key]) => key);
 
   if (fieldsToRefill.length > 0) {
