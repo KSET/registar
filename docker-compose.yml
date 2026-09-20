@@ -22,7 +22,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "cd server && npx prisma migrate deploy && npx nodemon src/index.js"
+    command: sh -c "cd server && npx prisma migrate deploy && npx prisma db seed && npx nodemon src/index.js"
     working_dir: /app
     ports:
       - "4000:4000"
