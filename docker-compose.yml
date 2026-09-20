@@ -5,7 +5,7 @@ services:
       # 5432 i 5433 su već zauzeti (lokalni Postgres / drugi kontejneri), pa
       # bazu izlažemo na 5434. Interni pristup (server -> db:5432) ide preko
       # Docker mreže i nije pogođen.
-      - "5432:5432"
+      - "5434:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -22,7 +22,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "cd server && npx prisma@6 migrate deploy && npx nodemon src/index.js"
+    command: sh -c "cd server && npx prisma migrate deploy && npx nodemon src/index.js"
     working_dir: /app
     ports:
       - "4000:4000"
