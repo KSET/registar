@@ -144,7 +144,7 @@ export default function MemberView({ member: initialMember, onUpdated }) {
             <tr>
               <td style={tdStyle}>E-mail pri udruzi</td>
               <td style={tdStyle}>
-                {member.associationEmail || (
+                {member.ksetEmail || (
                   <>
                     nije povezano — <a href={linkEmailUrl()}>poveži KSET e-poštu</a>
                   </>

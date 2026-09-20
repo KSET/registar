@@ -10,7 +10,7 @@ export const FIELD_LABELS = {
   faculty: 'Fakultet',
   phone: 'Broj telefona',
   privateEmail: 'Privatni e-mail',
-  associationEmail: 'E-mail pri udruzi',
+  ksetEmail: 'KSET e-mail',
   memberSince: 'Datum učlanjenja',
   cardNumber: 'Broj iskaznice',
   membershipLevel: 'Razina članstva',

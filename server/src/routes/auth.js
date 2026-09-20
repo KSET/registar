@@ -15,7 +15,7 @@ function findMemberByVerifiedEmail(email) {
   return prisma.member.findFirst({
     where: {
       OR: [
-        { associationEmail: email, associationEmailVerified: true },
+        { ksetEmail: email, ksetEmailVerified: true },
         { privateEmail: email, privateEmailVerified: true },
       ],
     },
@@ -90,8 +90,8 @@ async function handleEmailLinkCallback(req, res, memberId) {
     }
 
     const linkingKset = isKsetEmail(email);
-    const currentValue = linkingKset ? member.associationEmail : member.privateEmail;
-    const currentlyVerified = linkingKset ? member.associationEmailVerified : member.privateEmailVerified;
+    const currentValue = linkingKset ? member.ksetEmail : member.privateEmail;
+    const currentlyVerified = linkingKset ? member.ksetEmailVerified : member.privateEmailVerified;
 
     if (currentValue === email && currentlyVerified) {
       return res.redirect(`${config.clientUrl}/?linked=already`);
@@ -101,7 +101,7 @@ async function handleEmailLinkCallback(req, res, memberId) {
     const claimedByOther = await prisma.member.findFirst({
       where: {
         id: { not: memberId },
-        OR: [{ associationEmail: email }, { privateEmail: email }],
+        OR: [{ ksetEmail: email }, { privateEmail: email }],
       },
     });
     if (claimedByOther) {
@@ -111,13 +111,13 @@ async function handleEmailLinkCallback(req, res, memberId) {
     await prisma.member.update({
       where: { id: memberId },
       data: linkingKset
-        ? { associationEmail: email, associationEmailVerified: true }
+        ? { ksetEmail: email, ksetEmailVerified: true }
         : { privateEmail: email, privateEmailVerified: true },
     });
 
     await logAction(prisma, 'member_email_linked', {
       userId: memberId,
-      details: { field: linkingKset ? 'associationEmail' : 'privateEmail' },
+      details: { field: linkingKset ? 'ksetEmail' : 'privateEmail' },
     });
 
     return res.redirect(`${config.clientUrl}/?linked=success`);

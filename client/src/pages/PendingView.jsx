@@ -10,7 +10,7 @@ export default function PendingView({ pending, onUpdated }) {
 
   const fieldsToRefill = Object.entries(status)
     .filter(([key, s]) => {
-      if (key === 'associationEmail') return false;
+      if (key === 'ksetEmail') return false;
       if (s !== 'PENDING') return false;
       const val = data[key];
       if (Array.isArray(val)) return val.length === 0;

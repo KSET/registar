@@ -64,7 +64,7 @@ async function main() {
     // Admin korisnik
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@udruga.hr';
   await prisma.member.upsert({
-    where: { associationEmail: adminEmail },
+    where: { ksetEmail: adminEmail },
     update: { appRole: 'ADMINISTRATOR' },
     create: {
       firstName: 'KSET',
@@ -76,7 +76,7 @@ async function main() {
       faculty: 'N/A',
       phone: '0000000000',
       privateEmail: adminEmail,
-      associationEmail: adminEmail,
+      ksetEmail: adminEmail,
       memberSince: new Date(),
       cardNumber: 'ADMIN-001',
       membershipLevel: 'PUNOPRAVNO',

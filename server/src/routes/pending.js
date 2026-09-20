@@ -8,7 +8,7 @@ const router = express.Router();
 const prisma = new PrismaClient();
 
 // Always set from the verified Google login, never user-editable.
-const NON_EDITABLE_PENDING_FIELDS = ['associationEmail'];
+const NON_EDITABLE_PENDING_FIELDS = ['ksetEmail'];
 
 const PENDING_FIELD_VALIDATORS = {
   oib: (v) => (/^\d{11}$/.test(v) ? null : 'OIB mora imati 11 znamenaka.'),
@@ -46,7 +46,7 @@ router.post('/', authenticateToken, async (req, res) => {
     const existingMember = await prisma.member.findFirst({
       where: {
         OR: [
-          { associationEmail: email, associationEmailVerified: true },
+          { ksetEmail: email, ksetEmailVerified: true },
           { privateEmail: email, privateEmailVerified: true },
         ],
       },
@@ -69,7 +69,7 @@ router.post('/', authenticateToken, async (req, res) => {
       allergyIds, dietType, shirtSize, acceptedDocuments,
     } = req.body;
 
-    // @kset.org login -> associationEmail; anything else -> privateEmail.
+    // @kset.org login -> ksetEmail; anything else -> privateEmail.
     // The other slot stays empty until linked later.
     const isKset = isKsetEmail(email);
 
@@ -113,7 +113,7 @@ router.post('/', authenticateToken, async (req, res) => {
       faculty: faculty.trim(),
       phone: phone.trim(),
       privateEmail: isKset ? privateEmail.trim() : email,
-      associationEmail: isKset ? email : null,
+      ksetEmail: isKset ? email : null,
       memberSince,
       cardNumber: cardNumber.trim(),
       membershipLevel,
@@ -182,9 +182,9 @@ router.patch('/me', authenticateToken, async (req, res) => {
     const updatedFieldData = { ...pending.fieldData };
     const updatedFieldStatus = { ...pending.fieldStatus };
 
-    // If associationEmail is unset, privateEmail is the verified login
+    // If ksetEmail is unset, privateEmail is the verified login
     // email instead and must be locked the same way.
-    const nonEditableFields = pending.fieldData.associationEmail
+    const nonEditableFields = pending.fieldData.ksetEmail
       ? NON_EDITABLE_PENDING_FIELDS
       : [...NON_EDITABLE_PENDING_FIELDS, 'privateEmail'];
 
@@ -380,9 +380,9 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
           faculty: data.faculty,
           phone: data.phone,
           privateEmail: data.privateEmail,
-          privateEmailVerified: !data.associationEmail,
-          associationEmail: data.associationEmail,
-          associationEmailVerified: Boolean(data.associationEmail),
+          privateEmailVerified: !data.ksetEmail,
+          ksetEmail: data.ksetEmail,
+          ksetEmailVerified: Boolean(data.ksetEmail),
           memberSince: new Date(data.memberSince),
           cardNumber: data.cardNumber,
           membershipLevel: data.membershipLevel,

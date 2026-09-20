@@ -87,8 +87,8 @@ model Member {
   phone              String
   privateEmail       String
   privateEmailVerified Boolean       @default(false)
-  associationEmail   String?         @unique
-  associationEmailVerified Boolean   @default(true)
+  ksetEmail          String?         @unique
+  ksetEmailVerified  Boolean         @default(true)
   memberSince        DateTime        @db.Date
   cardNumber         String          @unique
   membershipLevel    MembershipLevel
