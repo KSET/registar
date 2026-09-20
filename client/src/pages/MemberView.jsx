@@ -221,7 +221,18 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <InfoRow label="Matična sekcija" value={member.homeSection?.name} />
             <InfoRow label="Pridružene sekcije" value={member.sections.map((s) => s.section.name).join(', ') || '-'} />
             <InfoRow label="Timovi" value={member.teams.map((t) => t.team.name).join(', ') || '-'} />
-            <InfoRow label="Potvrda valjana do" value={formatDate(member.certificateValidUntil)} />
+            <InfoRow label="Potvrda valjana do">
+              {formatDate(member.certificateValidUntil)}
+              <span className="block mt-1">
+                <button
+                  type="button"
+                  className="btn-secondary text-xs py-1"
+                  onClick={() => alert('Još nije implementirano')}
+                >
+                  Učitaj potvrdu
+                </button>
+              </span>
+            </InfoRow>
             {isAdmin && <InfoRow label="Rola" value={member.appRole} />}
           </Card>
 
