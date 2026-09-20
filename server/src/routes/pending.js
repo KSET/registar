@@ -64,7 +64,7 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 
     const {
-      firstName, lastName, oib, dateOfBirth, address, gender, faculty,
+      firstName, lastName, oib, dateOfBirth, address, gender, facultyId, facultyOther,
       phone, privateEmail, memberSince, cardNumber, membershipLevel,
       fullMemberSince, homeSectionId, sectionIds, teamIds, drinkIds,
       allergyIds, dietType, shirtSize, acceptedDocuments,
@@ -82,7 +82,9 @@ router.post('/', authenticateToken, async (req, res) => {
     if (!dateOfBirth) errors.push('Datum rođenja je obavezan.');
     if (!address || !address.trim()) errors.push('Adresa je obavezna.');
     if (!gender || !['M', 'Z'].includes(gender)) errors.push('Spol je obavezan (M ili Ž).');
-    if (!faculty || !faculty.trim()) errors.push('Fakultet je obavezan.');
+    if (!facultyId && (!facultyOther || !facultyOther.trim())) {
+      errors.push('Fakultet je obavezan (odaberi ili upiši pod Ostalo).');
+    }
     if (!phone || !phone.trim()) errors.push('Broj telefona je obavezan.');
     if (isKset && (!privateEmail || !privateEmail.trim())) errors.push('Privatni e-mail je obavezan.');
     if (!memberSince) errors.push('Datum učlanjenja je obavezan.');
@@ -111,7 +113,8 @@ router.post('/', authenticateToken, async (req, res) => {
       dateOfBirth,
       address: address.trim(),
       gender,
-      faculty: faculty.trim(),
+      facultyId: facultyId ? parseInt(facultyId) : null,
+      facultyOther: facultyOther ? facultyOther.trim() : null,
       phone: phone.trim(),
       privateEmail: isKset ? privateEmail.trim() : email,
       ksetEmail: isKset ? email : null,
@@ -378,7 +381,8 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
           dateOfBirth: new Date(data.dateOfBirth),
           address: data.address,
           gender: data.gender,
-          faculty: data.faculty,
+          facultyId: data.facultyId || null,
+          facultyOther: data.facultyOther || null,
           phone: data.phone,
           privateEmail: data.privateEmail,
           privateEmailVerified: !data.ksetEmail,

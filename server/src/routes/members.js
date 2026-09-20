@@ -15,7 +15,6 @@ const EDITABLE_SCALAR_FIELDS = [
   'lastName',
   'address',
   'gender',
-  'faculty',
   'phone',
   'privateEmail',
   'fullMemberSince',
@@ -35,6 +34,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       where: { id: memberId },
       include: {
         homeSection: true,
+        faculty: true,
         sections: { include: { section: true } },
         teams: { include: { team: true } },
         drinks: { include: { drink: true } },
@@ -135,6 +135,16 @@ router.patch('/me', authenticateToken, async (req, res) => {
       }
     }
 
+    if ('facultyId' in body || 'facultyOther' in body) {
+      const fid = body.facultyId ? parseInt(body.facultyId) : null;
+      const fother = body.facultyOther ? String(body.facultyOther).trim() : null;
+      if (!fid && !fother) {
+        return res.status(400).json({ error: 'Fakultet je obavezan.' });
+      }
+      data.facultyId = fid;
+      data.facultyOther = fother;
+    }
+
     if ('gender' in data && !['M', 'Z'].includes(data.gender)) {
       return res.status(400).json({ error: 'Nevažeći spol.' });
     }
@@ -199,6 +209,7 @@ router.patch('/me', authenticateToken, async (req, res) => {
       data: { ...data, ...relationUpdates },
       include: {
         homeSection: true,
+        faculty: true,
         sections: { include: { section: true } },
         teams: { include: { team: true } },
         drinks: { include: { drink: true } },

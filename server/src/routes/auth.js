@@ -150,6 +150,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       where: { id: memberId },
       include: {
         homeSection: true,
+        faculty: true,
         sections: { include: { section: true } },
         teams: { include: { team: true } },
         drinks: { include: { drink: true } },

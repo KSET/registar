@@ -10,6 +10,7 @@ const allergyRoutes = require('./routes/allergies');
 const pendingRoutes = require('./routes/pending');
 const memberRoutes = require('./routes/members');
 const fieldChangeRoutes = require('./routes/fieldChanges');
+const facultyRoutes = require('./routes/faculties');
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use('/api/allergies', allergyRoutes);
 app.use('/api/pending', pendingRoutes);
 app.use('/api/members', memberRoutes);
 app.use('/api/field-changes', fieldChangeRoutes);
+app.use('/api/faculties', facultyRoutes);
 
 app.listen(config.port, () => {
   console.log(`Server running on port ${config.port}`);

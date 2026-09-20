@@ -83,7 +83,9 @@ model Member {
   dateOfBirth        DateTime        @db.Date
   address            String
   gender             Gender
-  faculty            String
+  facultyId          Int?
+  faculty            Faculty?        @relation(fields: [facultyId], references: [id])
+  facultyOther       String?
   phone              String
   privateEmail       String
   privateEmailVerified Boolean       @default(false)
@@ -204,3 +206,11 @@ model AuditLog {
 
   createdAt DateTime @default(now())
 }
+
+model Faculty {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  members Member[]
+}
+

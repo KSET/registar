@@ -61,7 +61,18 @@ async function main() {
   }
   console.log(`Seeded ${drinks.length} drinks`);
 
-    // Admin korisnik
+  const faculties = [
+    'FER', 'FSB', 'PMF', 'FFZG', 'TVZ',
+  ];
+  for (const name of faculties) {
+    await prisma.faculty.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+  }
+  console.log(`Seeded ${faculties.length} faculties`);
+
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@udruga.hr';
   await prisma.member.upsert({
     where: { ksetEmail: adminEmail },
@@ -73,7 +84,6 @@ async function main() {
       dateOfBirth: new Date('1990-01-01'),
       address: 'Admin adresa',
       gender: 'M',
-      faculty: 'N/A',
       phone: '0000000000',
       privateEmail: adminEmail,
       ksetEmail: adminEmail,
