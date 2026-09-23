@@ -217,7 +217,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
 
   const handleOpenCert = async () => {
     try {
-      await openCertificate(member.id, false);
+      await openCertificate(member.id, 'member');
     } catch (err) {
       setCertError(err.message);
     }

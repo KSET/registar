@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { authHeaders, jsonHeaders, openCertificate, openPendingCertificate } from '../api/auth';
+import { authHeaders, jsonHeaders, openCertificate } from '../api/auth';
 import { useLookupData } from '../useLookupData';
 import { FIELD_LABELS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, GENDER_OPTIONS, fieldOrderIndex } from '../constants';
 import { PageContainer, Card, Alert, ConfirmDialog } from '../components/ui';
@@ -207,8 +207,8 @@ export default function ApprovalDashboard() {
                                 className="text-brand-orange hover:underline"
                                 onClick={() =>
                                   (r.type === 'application'
-                                    ? openPendingCertificate(r.id)
-                                    : openCertificate(r.memberId, true)
+                                    ? openCertificate(r.id, 'application')
+                                    : openCertificate(r.memberId, 'pending')
                                   ).catch((e) => setMessage(e.message))
                                 }
                               >Otvori PDF
