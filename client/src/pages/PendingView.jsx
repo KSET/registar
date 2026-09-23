@@ -1,4 +1,4 @@
-import { FIELD_LABELS } from '../constants';
+import { FIELD_LABELS, fieldOrderIndex } from '../constants';
 import { PageContainer, Card, Alert } from '../components/ui';
 import PendingRefillForm from './PendingRefillForm';
 
@@ -48,7 +48,9 @@ export default function PendingView({ pending, onUpdated }) {
               </tr>
             </thead>
             <tbody>
-              {Object.entries(data).map(([key, value]) => (
+              {Object.entries(data)
+                .sort(([a], [b]) => fieldOrderIndex(a) - fieldOrderIndex(b))
+                .map(([key, value]) => (
                 <tr key={key}>
                   <td className="text-content-secondary">{FIELD_LABELS[key] || key}</td>
                   <td>{displayValue(value)}</td>

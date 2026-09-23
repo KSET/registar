@@ -1,5 +1,40 @@
 // Field labels and enum options shared across forms and views
 
+// Kanonski redoslijed polja - prati redoslijed ispunjavanja u RegistrationForm.
+// Koristi se za prikaz polja adminu na odobravanju i u pregledu prijave.
+export const FIELD_ORDER = [
+  'firstName',
+  'lastName',
+  'oib',
+  'dateOfBirth',
+  'address',
+  'gender',
+  'phone',
+  'privateEmail',
+  'ksetEmail',
+  'facultyId',
+  'faculty',
+  'facultyOther',
+  'memberSince',
+  'cardNumber',
+  'membershipLevel',
+  'fullMemberSince',
+  'homeSectionId',
+  'sectionIds',
+  'teamIds',
+  'dietType',
+  'shirtSize',
+  'drinkIds',
+  'allergyIds',
+  'acceptedDocuments',
+];
+
+// Vraća indeks polja u kanonskom redoslijedu; nepoznata polja idu na kraj.
+export function fieldOrderIndex(fieldName) {
+  const i = FIELD_ORDER.indexOf(fieldName);
+  return i === -1 ? FIELD_ORDER.length : i;
+}
+
 export const FIELD_LABELS = {
   firstName: 'Ime',
   lastName: 'Prezime',

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { authHeaders, jsonHeaders } from '../api/auth';
 import { useLookupData } from '../useLookupData';
-import { FIELD_LABELS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, GENDER_OPTIONS } from '../constants';
+import { FIELD_LABELS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, GENDER_OPTIONS, fieldOrderIndex } from '../constants';
 import { PageContainer, Card, Alert, ConfirmDialog } from '../components/ui';
 
 const MEMBERSHIP_LABELS = Object.fromEntries(MEMBERSHIP_LEVEL_OPTIONS.map((o) => [o.value, o.label]));
@@ -52,7 +52,8 @@ export default function ApprovalDashboard() {
     const appReqs = applications.map((p) => {
       const pendingFields = Object.entries(p.fieldStatus)
         .filter(([, s]) => s === 'PENDING')
-        .map(([name]) => ({ name, value: p.fieldData[name] }));
+        .map(([name]) => ({ name, value: p.fieldData[name] }))
+        .sort((a, b) => fieldOrderIndex(a.name) - fieldOrderIndex(b.name));
       return {
         key: `app-${p.id}`,
         type: 'application',
