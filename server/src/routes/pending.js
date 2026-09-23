@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
 const { logAction, logError } = require('../utils/auditLog');
 const { isKsetEmail } = require('../utils/email');
@@ -8,7 +8,6 @@ const { isValidOib } = require('../utils/oib');
 const { saveCertificateBuffer, deleteCertificate } = require('./uploads');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 const upload = multer({
   storage: multer.memoryStorage(),

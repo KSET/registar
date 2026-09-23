@@ -2,12 +2,11 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
 const { logAction, logError } = require('../utils/auditLog');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 const UPLOAD_DIR = '/app/uploads/certificates';
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });

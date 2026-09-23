@@ -3,12 +3,11 @@ const passport = require('passport');
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 const { authenticateToken } = require('../middleware/auth');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { logAction, logError } = require('../utils/auditLog');
 const { isKsetEmail } = require('../utils/email');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // Matches on either email, but only if it's verified via OAuth.
 function findMemberByVerifiedEmail(email) {

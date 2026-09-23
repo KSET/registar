@@ -1,10 +1,9 @@
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
 const { logAction, logError } = require('../utils/auditLog');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 const LOCKED_FIELDS = ['oib', 'dateOfBirth', 'cardNumber', 'memberSince'];
 const APPROVAL_FIELDS = ['membershipLevel'];
