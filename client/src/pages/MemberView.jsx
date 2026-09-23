@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { jsonHeaders, getToken } from '../api/auth';
+import { jsonHeaders, getToken, authHeaders, openCertificate } from '../api/auth';
 import { useLookupData } from '../useLookupData';
 import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
@@ -41,6 +41,10 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
   const [submitError, setSubmitError] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [certFile, setCertFile] = useState(null);
+  const [certMsg, setCertMsg] = useState('');
+  const [certError, setCertError] = useState('');
+  const [certUploading, setCertUploading] = useState(false);
 
   useEffect(() => {
     setMember(initialMember);
@@ -49,6 +53,9 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
   const pendingMembership = (member.pendingChanges || []).find(
     (c) => c.fieldName === 'membershipLevel'
   );
+
+  const pendingCert = (member.pendingChanges || []).find((c) => c.fieldName === 'certificatePath');
+  const certValid = member.certificateValidUntil && new Date(member.certificateValidUntil) >= new Date();
 
   // Determine initial faculty select value: known faculty id, or OTHER if facultyOther set
   const initialFacultyId = member.faculty?.id
@@ -171,6 +178,52 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
     }
   };
 
+  const handleCertUpload = async () => {
+    setCertMsg('');
+    setCertError('');
+    if (!certFile) {
+      setCertError('Odaberite PDF datoteku.');
+      return;
+    }
+    setCertUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('certificate', certFile);
+      const res = await fetch('/api/uploads/certificate', {
+        method: 'POST',
+        headers: authHeaders(), // NE dodavati Content-Type, browser postavlja multipart boundary
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCertError(data.error || 'Greška pri uploadu.');
+        return;
+      }
+      setCertMsg(data.message);
+      setCertFile(null);
+      // Refresh profile so pendingChanges reflects the new upload
+      const meRes = await fetch('/api/members/me', { headers: authHeaders() });
+      if (meRes.ok) {
+        const updated = await meRes.json();
+        setMember(updated);
+        if (onUpdated) onUpdated(updated);
+      }
+    } catch (err) {
+      setCertError('Mrežna greška.');
+    } finally {
+      setCertUploading(false);
+    }
+  };
+
+  const handleOpenCert = async () => {
+    try {
+      await openCertificate(member.id, false);
+    } catch (err) {
+      setCertError(err.message);
+    }
+  };
+
+
   // ---------- VIEW MODE ----------
   if (!editing) {
     return (
@@ -223,15 +276,13 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <InfoRow label="Timovi" value={member.teams.map((t) => t.team.name).join(', ') || '-'} />
             <InfoRow label="Potvrda valjana do">
               {formatDate(member.certificateValidUntil)}
-              <span className="block mt-1">
-                <button
-                  type="button"
-                  className="btn-secondary text-xs py-1"
-                  onClick={() => alert('Još nije implementirano')}
-                >
-                  Učitaj potvrdu
-                </button>
-              </span>
+              {member.certificatePath && (
+                <span className="block mt-1">
+                  <button type="button" className="text-brand-orange hover:underline text-sm" onClick={handleOpenCert}>
+                    Otvori potvrdu
+                  </button>
+                </span>
+              )}
             </InfoRow>
             {isAdmin && <InfoRow label="Rola" value={member.appRole} />}
           </Card>
@@ -241,6 +292,37 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <InfoRow label="Pića" value={member.drinks.map((d) => d.drink.name).join(', ') || '-'} />
             <InfoRow label="Alergije" value={member.allergies.map((a) => a.allergy.name).join(', ') || '-'} />
             <InfoRow label="Veličina majice" value={member.shirtSize} />
+          </Card>
+          <Card title="Potvrda o studiranju">
+            {certMsg && <Alert kind="success">{certMsg}</Alert>}
+            {certError && <Alert kind="error">{certError}</Alert>}
+
+            {pendingCert ? (
+              <p className="text-sm text-content-secondary">
+                Potvrda je poslana i čeka odobrenje voditelja.
+              </p>
+            ) : certValid ? (
+              <p className="text-sm text-content-secondary">
+                Vaša potvrda je valjana do {formatDate(member.certificateValidUntil)}. Nova se može učitati nakon isteka.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <p className="text-sm text-content-secondary">
+                  Učitajte potvrdu o studiranju (PDF, max 5 MB). Ide voditelju na odobrenje.
+                </p>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setCertFile(e.target.files[0] || null)}
+                  className="text-sm text-content-secondary"
+                />
+                <div>
+                  <button type="button" className="btn-primary" disabled={certUploading || !certFile} onClick={handleCertUpload}>
+                    {certUploading ? 'Šaljem...' : 'Učitaj potvrdu'}
+                  </button>
+                </div>
+              </div>
+            )}
           </Card>
         </div>
 

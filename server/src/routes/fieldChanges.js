@@ -1,4 +1,7 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+
 const { PrismaClient } = require('@prisma/client');
 const { authenticateToken } = require('../middleware/auth');
 const { logAction, logError } = require('../utils/auditLog');
@@ -132,6 +135,10 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
 
       return res.json({ message: 'Promjena je odobrena.' });
     } else {
+      if (change.fieldName === 'certificatePath' && change.newValue) {
+        const filePath = path.join('/app/uploads/certificates', path.basename(change.newValue));
+        fs.unlink(filePath, () => {});
+      }
       await prisma.pendingFieldChange.update({
         where: { id: changeId },
         data: { status: 'REJECTED', reviewedBy: memberId },

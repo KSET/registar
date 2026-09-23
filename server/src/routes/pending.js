@@ -1,12 +1,25 @@
 const express = require('express');
+const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
 const { authenticateToken } = require('../middleware/auth');
 const { logAction, logError } = require('../utils/auditLog');
 const { isKsetEmail } = require('../utils/email');
 const { isValidOib } = require('../utils/oib');
+const { saveCertificateBuffer, deleteCertificate } = require('./uploads');
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype !== 'application/pdf') {
+      return cb(new Error('Dozvoljen je samo PDF.'));
+    }
+    cb(null, true);
+  },
+});
 
 // Always set from the verified Google login, never user-editable.
 const NON_EDITABLE_PENDING_FIELDS = ['ksetEmail'];
@@ -19,6 +32,25 @@ const PENDING_FIELD_VALIDATORS = {
   dietType: (v) =>
     ['MESOJED', 'VEGETARIJANSTVO', 'VEGANSTVO', 'SVEJED'].includes(v) ? null : 'Nevažeći tip prehrane.',
 };
+
+function parseArr(v) {
+  if (Array.isArray(v)) return v;
+  if (typeof v === 'string' && v.trim()) {
+    try { return JSON.parse(v); } catch { return []; }
+  }
+  return [];
+}
+function parseBool(v) {
+  return v === true || v === 'true';
+}
+
+// Calculate certificateValidUntil: next September 30.
+function nextCertificateValidUntil(now = new Date()) {
+  let year = now.getFullYear();
+  const sept30 = new Date(year, 8, 30);
+  if (now > sept30) year += 1;
+  return new Date(year, 8, 30);
+}
 
 // GET pending application for current user
 router.get('/me', authenticateToken, async (req, res) => {
@@ -39,205 +71,244 @@ router.get('/me', authenticateToken, async (req, res) => {
   }
 });
 
-// POST new pending application
-router.post('/', authenticateToken, async (req, res) => {
-  try {
-    const { email } = req.user;
+// POST new pending application (multipart: fields + certificate PDF)
+router.post('/', authenticateToken, (req, res) => {
+  upload.single('certificate')(req, res, async (uploadErr) => {
+    let certFilename;
+    try {
+      if (uploadErr) {
+        return res.status(400).json({ error: uploadErr.message });
+      }
 
-    const existingMember = await prisma.member.findFirst({
-      where: {
-        OR: [
-          { ksetEmail: email, ksetEmailVerified: true },
-          { privateEmail: email, privateEmailVerified: true },
-        ],
-      },
-    });
-    if (existingMember) {
-      return res.status(400).json({ error: 'Već ste registrirani kao član.' });
-    }
+      const { email } = req.user;
 
-    const existingPending = await prisma.pendingMember.findUnique({
-      where: { googleEmail: email },
-    });
-    if (existingPending) {
-      return res.status(400).json({ error: 'Već imate prijavu na čekanju.' });
-    }
+      const existingMember = await prisma.member.findFirst({
+        where: {
+          OR: [
+            { ksetEmail: email, ksetEmailVerified: true },
+            { privateEmail: email, privateEmailVerified: true },
+          ],
+        },
+      });
+      if (existingMember) {
+        return res.status(400).json({ error: 'Već ste registrirani kao član.' });
+      }
 
-    const {
-      firstName, lastName, oib, dateOfBirth, address, gender, facultyId, facultyOther,
-      phone, privateEmail, memberSince, cardNumber, membershipLevel,
-      fullMemberSince, homeSectionId, sectionIds, teamIds, drinkIds,
-      allergyIds, dietType, shirtSize, acceptedDocuments,
-    } = req.body;
+      const existingPending = await prisma.pendingMember.findUnique({
+        where: { googleEmail: email },
+      });
+      if (existingPending) {
+        return res.status(400).json({ error: 'Već imate prijavu na čekanju.' });
+      }
 
-    // @kset.org login -> ksetEmail; anything else -> privateEmail.
-    // The other slot stays empty until linked later.
-    const isKset = isKsetEmail(email);
+      const {
+        firstName, lastName, oib, dateOfBirth, address, gender, facultyId, facultyOther,
+        phone, privateEmail, memberSince, cardNumber, membershipLevel,
+        fullMemberSince, homeSectionId, dietType, shirtSize,
+      } = req.body;
 
-    const errors = [];
+      const sectionIds = parseArr(req.body.sectionIds);
+      const teamIds = parseArr(req.body.teamIds);
+      const drinkIds = parseArr(req.body.drinkIds);
+      const allergyIds = parseArr(req.body.allergyIds);
+      const acceptedDocuments = parseBool(req.body.acceptedDocuments);
 
-    if (!firstName || !firstName.trim()) errors.push('Ime je obavezno.');
-    if (!lastName || !lastName.trim()) errors.push('Prezime je obavezno.');
-    if (!oib || !isValidOib(oib)) errors.push('OIB nije ispravan.');
-    if (!dateOfBirth) errors.push('Datum rođenja je obavezan.');
-    if (!address || !address.trim()) errors.push('Adresa je obavezna.');
-    if (!gender || !['M', 'Z'].includes(gender)) errors.push('Spol je obavezan (M ili Ž).');
-    if (!facultyId && (!facultyOther || !facultyOther.trim())) {
-      errors.push('Fakultet je obavezan (odaberi ili upiši pod Ostalo).');
-    }
-    if (!phone || !phone.trim()) errors.push('Broj telefona je obavezan.');
-    if (isKset && (!privateEmail || !privateEmail.trim())) errors.push('Privatni e-mail je obavezan.');
-    if (!memberSince) errors.push('Datum učlanjenja je obavezan.');
-    if (!cardNumber || !cardNumber.trim()) errors.push('Broj iskaznice je obavezan.');
-    if (!membershipLevel || !['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(membershipLevel)) {
-      errors.push('Razina članstva je obavezna.');
-    }
-    if (!homeSectionId) errors.push('Matična sekcija je obavezna.');
-    if (!dietType || !['MESOJED', 'VEGETARIJANSTVO', 'VEGANSTVO', 'SVEJED'].includes(dietType)) {
-      errors.push('Tip prehrane je obavezan.');
-    }
-    if (!shirtSize || !shirtSize.trim()) errors.push('Veličina majice je obavezna.');
-    if (!acceptedDocuments) errors.push('Morate prihvatiti akte i dokumente udruge.');
-    if (!drinkIds || !Array.isArray(drinkIds) || drinkIds.length === 0) {
-      errors.push('Morate odabrati barem jedno piće.');
-    }
+      const isKset = isKsetEmail(email);
 
-    if (errors.length > 0) {
-      return res.status(400).json({ errors });
-    }
+      const errors = [];
 
-    const fieldData = {
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      oib,
-      dateOfBirth,
-      address: address.trim(),
-      gender,
-      facultyId: facultyId ? parseInt(facultyId) : null,
-      facultyOther: facultyOther ? facultyOther.trim() : null,
-      phone: phone.trim(),
-      privateEmail: isKset ? privateEmail.trim() : email,
-      ksetEmail: isKset ? email : null,
-      memberSince,
-      cardNumber: cardNumber.trim(),
-      membershipLevel,
-      fullMemberSince: fullMemberSince || null,
-      homeSectionId: parseInt(homeSectionId),
-      sectionIds: sectionIds || [],
-      teamIds: teamIds || [],
-      drinkIds,
-      allergyIds: allergyIds || [],
-      dietType,
-      shirtSize: shirtSize.trim(),
-      acceptedDocuments,
-    };
+      if (!firstName || !firstName.trim()) errors.push('Ime je obavezno.');
+      if (!lastName || !lastName.trim()) errors.push('Prezime je obavezno.');
+      if (!oib || !isValidOib(oib)) errors.push('OIB nije ispravan.');
+      if (!dateOfBirth) errors.push('Datum rođenja je obavezan.');
+      if (!address || !address.trim()) errors.push('Adresa je obavezna.');
+      if (!gender || !['M', 'Z'].includes(gender)) errors.push('Spol je obavezan (M ili Ž).');
+      if (!facultyId && (!facultyOther || !facultyOther.trim())) {
+        errors.push('Fakultet je obavezan (odaberi ili upiši pod Ostalo).');
+      }
+      if (!phone || !phone.trim()) errors.push('Broj telefona je obavezan.');
+      if (isKset && (!privateEmail || !privateEmail.trim())) errors.push('Privatni e-mail je obavezan.');
+      if (!memberSince) errors.push('Datum učlanjenja je obavezan.');
+      if (!cardNumber || !cardNumber.trim()) errors.push('Broj iskaznice je obavezan.');
+      if (!membershipLevel || !['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(membershipLevel)) {
+        errors.push('Razina članstva je obavezna.');
+      }
+      if (!homeSectionId) errors.push('Matična sekcija je obavezna.');
+      if (!dietType || !['MESOJED', 'VEGETARIJANSTVO', 'VEGANSTVO', 'SVEJED'].includes(dietType)) {
+        errors.push('Tip prehrane je obavezan.');
+      }
+      if (!shirtSize || !shirtSize.trim()) errors.push('Veličina majice je obavezna.');
+      if (!acceptedDocuments) errors.push('Morate prihvatiti akte i dokumente udruge.');
+      if (!drinkIds || drinkIds.length === 0) errors.push('Morate odabrati barem jedno piće.');
+      if (!req.file) errors.push('Potvrda o studiranju je obavezna (PDF).');
 
-    const fieldStatus = {};
-    for (const key of Object.keys(fieldData)) {
-      fieldStatus[key] = 'PENDING';
-    }
+      if (errors.length > 0) {
+        return res.status(400).json({ errors });
+      }
 
-    const pending = await prisma.pendingMember.create({
-      data: {
-        googleEmail: email,
-        fieldData,
-        fieldStatus,
+      // Save certificate to disk now; path travels with the application.
+      certFilename = saveCertificateBuffer(firstName.trim(), lastName.trim(), req.file.buffer);
+
+      const fieldData = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        oib,
+        dateOfBirth,
+        address: address.trim(),
+        gender,
+        facultyId: facultyId ? parseInt(facultyId) : null,
+        facultyOther: facultyOther ? facultyOther.trim() : null,
+        phone: phone.trim(),
+        privateEmail: isKset ? privateEmail.trim() : email,
+        ksetEmail: isKset ? email : null,
+        certificatePath: certFilename,
+        memberSince,
+        cardNumber: cardNumber.trim(),
+        membershipLevel,
+        fullMemberSince: fullMemberSince || null,
         homeSectionId: parseInt(homeSectionId),
-        status: 'PENDING',
-      },
-      include: { homeSection: true },
-    });
+        sectionIds,
+        teamIds,
+        drinkIds,
+        allergyIds,
+        dietType,
+        shirtSize: shirtSize.trim(),
+        acceptedDocuments,
+      };
 
-    await logAction(prisma, 'pending_application_created', {
-      details: { pendingId: pending.id, googleEmail: email, homeSectionId: pending.homeSectionId },
-    });
+      const fieldStatus = {};
+      for (const key of Object.keys(fieldData)) {
+        fieldStatus[key] = 'PENDING';
+      }
 
-    res.status(201).json(pending);
-  } catch (err) {
-    if (err.code === 'P2002') {
-      return res.status(409).json({ error: 'Duplikat — prijava već postoji.' });
+      const pending = await prisma.pendingMember.create({
+        data: {
+          googleEmail: email,
+          fieldData,
+          fieldStatus,
+          homeSectionId: parseInt(homeSectionId),
+          status: 'PENDING',
+        },
+        include: { homeSection: true },
+      });
+
+      await logAction(prisma, 'pending_application_created', {
+        details: { pendingId: pending.id, googleEmail: email, homeSectionId: pending.homeSectionId },
+      });
+
+      res.status(201).json(pending);
+    } catch (err) {
+      if (certFilename) deleteCertificate(certFilename);
+      if (err.code === 'P2002') {
+        return res.status(409).json({ error: 'Duplikat — prijava već postoji.' });
+      }
+      await logError(prisma, 'pending_application_create', err, { details: { googleEmail: req.user.email } });
+      res.status(500).json({ error: 'Greška na serveru.' });
     }
-    await logError(prisma, 'pending_application_create', err, { details: { googleEmail: req.user.email } });
-    res.status(500).json({ error: 'Greška na serveru.' });
-  }
+  });
 });
 
-// PATCH re-submit rejected fields (Fix #1 & #2)
-router.patch('/me', authenticateToken, async (req, res) => {
-  try {
-    const pending = await prisma.pendingMember.findUnique({
-      where: { googleEmail: req.user.email },
-    });
-
-    if (!pending) {
-      return res.status(404).json({ error: 'Nema pending prijave.' });
-    }
-
-    if (pending.status !== 'PENDING') {
-      return res.status(400).json({ error: 'Prijava više nije na čekanju.' });
-    }
-
-    const { fields } = req.body; // { oib: "12345678901", address: "Nova adresa" }
-
-    if (!fields || typeof fields !== 'object') {
-      return res.status(400).json({ error: 'Polja su obavezna.' });
-    }
-
-    const updatedFieldData = { ...pending.fieldData };
-    const updatedFieldStatus = { ...pending.fieldStatus };
-
-    // If ksetEmail is unset, privateEmail is the verified login
-    // email instead and must be locked the same way.
-    const nonEditableFields = pending.fieldData.ksetEmail
-      ? NON_EDITABLE_PENDING_FIELDS
-      : [...NON_EDITABLE_PENDING_FIELDS, 'privateEmail'];
-
-    for (const [key, value] of Object.entries(fields)) {
-      if (nonEditableFields.includes(key)) {
-        return res.status(400).json({ error: `Polje "${key}" se ne može mijenjati.` });
+// PATCH re-submit rejected fields (supports certificate re-upload via multipart)
+router.patch('/me', authenticateToken, (req, res) => {
+  upload.single('certificate')(req, res, async (uploadErr) => {
+    let certFilename;
+    try {
+      if (uploadErr) {
+        return res.status(400).json({ error: uploadErr.message });
       }
 
-      // Members may only refill fields the leader REJECTED.
-      if (updatedFieldStatus[key] !== 'REJECTED') {
-        return res.status(400).json({ error: `Polje "${key}" nije moguće uređivati.` });
+      const pending = await prisma.pendingMember.findUnique({
+        where: { googleEmail: req.user.email },
+      });
+
+      if (!pending) {
+        return res.status(404).json({ error: 'Nema pending prijave.' });
+      }
+      if (pending.status !== 'PENDING') {
+        return res.status(400).json({ error: 'Prijava više nije na čekanju.' });
       }
 
-      const validate = PENDING_FIELD_VALIDATORS[key];
-      if (validate) {
-        const validationError = validate(value);
-        if (validationError) {
-          return res.status(400).json({ error: validationError });
+      // Non-file fields come as JSON string in `fields`, or as individual body fields.
+      let fields = {};
+      if (req.body.fields) {
+        try { fields = JSON.parse(req.body.fields); } catch { fields = {}; }
+      } else {
+        fields = { ...req.body };
+      }
+      // Normalize array-ish fields if present
+      for (const arrKey of ['sectionIds', 'teamIds', 'drinkIds', 'allergyIds']) {
+        if (arrKey in fields) fields[arrKey] = parseArr(fields[arrKey]);
+      }
+
+      const updatedFieldData = { ...pending.fieldData };
+      const updatedFieldStatus = { ...pending.fieldStatus };
+
+      const nonEditableFields = pending.fieldData.ksetEmail
+        ? NON_EDITABLE_PENDING_FIELDS
+        : [...NON_EDITABLE_PENDING_FIELDS, 'privateEmail'];
+
+      // Handle certificate re-upload separately (comes as a file, not in fields)
+      if (updatedFieldStatus.certificatePath === 'REJECTED') {
+        if (!req.file) {
+          return res.status(400).json({ error: 'Potvrda o studiranju je obavezna (PDF).' });
         }
+        // Delete old rejected file if it still lingers
+        if (updatedFieldData.certificatePath) {
+          deleteCertificate(updatedFieldData.certificatePath);
+        }
+        certFilename = saveCertificateBuffer(
+          updatedFieldData.firstName,
+          updatedFieldData.lastName,
+          req.file.buffer
+        );
+        updatedFieldData.certificatePath = certFilename;
+        updatedFieldStatus.certificatePath = 'PENDING';
       }
 
-      updatedFieldData[key] = value;
-      updatedFieldStatus[key] = 'PENDING';
+      for (const [key, value] of Object.entries(fields)) {
+        if (key === 'certificatePath') continue; // handled above via file
+        if (nonEditableFields.includes(key)) {
+          return res.status(400).json({ error: `Polje "${key}" se ne može mijenjati.` });
+        }
+        if (updatedFieldStatus[key] !== 'REJECTED') {
+          return res.status(400).json({ error: `Polje "${key}" nije moguće uređivati.` });
+        }
+        const validate = PENDING_FIELD_VALIDATORS[key];
+        if (validate) {
+          const validationError = validate(value);
+          if (validationError) {
+            return res.status(400).json({ error: validationError });
+          }
+        }
+        updatedFieldData[key] = value;
+        updatedFieldStatus[key] = 'PENDING';
+      }
+
+      const newHomeSectionId = fields.homeSectionId
+        ? parseInt(fields.homeSectionId)
+        : pending.homeSectionId;
+
+      const updated = await prisma.pendingMember.update({
+        where: { id: pending.id },
+        data: {
+          fieldData: updatedFieldData,
+          fieldStatus: updatedFieldStatus,
+          homeSectionId: newHomeSectionId,
+        },
+        include: { homeSection: true },
+      });
+
+      await logAction(prisma, 'pending_application_fields_updated', {
+        details: { pendingId: pending.id, fields: Object.keys(fields) },
+      });
+
+      res.json(updated);
+    } catch (err) {
+      if (certFilename) deleteCertificate(certFilename);
+      await logError(prisma, 'pending_application_update', err, { details: { googleEmail: req.user.email } });
+      res.status(500).json({ error: 'Greška na serveru.' });
     }
-
-    // Update homeSectionId on the record if it changed
-    const newHomeSectionId = fields.homeSectionId
-      ? parseInt(fields.homeSectionId)
-      : pending.homeSectionId;
-
-    const updated = await prisma.pendingMember.update({
-      where: { id: pending.id },
-      data: {
-        fieldData: updatedFieldData,
-        fieldStatus: updatedFieldStatus,
-        homeSectionId: newHomeSectionId,
-      },
-      include: { homeSection: true },
-    });
-
-    await logAction(prisma, 'pending_application_fields_updated', {
-      details: { pendingId: pending.id, fields: Object.keys(fields) },
-    });
-
-    res.json(updated);
-  } catch (err) {
-    await logError(prisma, 'pending_application_update', err, { details: { googleEmail: req.user.email } });
-    res.status(500).json({ error: 'Greška na serveru.' });
-  }
+  });
 });
 
 // GET all pending applications for section leader / admin
@@ -326,7 +397,6 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
     const fieldData = pending.fieldData;
     const fieldStatus = { ...pending.fieldStatus };
 
-    // Only allow decisions on PENDING fields
     for (const [field, decision] of Object.entries(decisions)) {
       if (!['APPROVED', 'REJECTED'].includes(decision)) {
         return res.status(400).json({ error: `Nevažeća odluka za polje ${field}: ${decision}` });
@@ -335,12 +405,11 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: `Nepoznato polje: ${field}` });
       }
       if (fieldStatus[field] !== 'PENDING') {
-        continue; // Skip already decided fields
+        continue;
       }
       fieldStatus[field] = decision;
     }
 
-    // Check if all fields have been decided
     const allReviewed = Object.values(fieldStatus).every((s) => s !== 'PENDING');
 
     if (!allReviewed) {
@@ -363,17 +432,7 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
     const hasRejected = Object.values(fieldStatus).some((s) => s === 'REJECTED');
 
     if (!hasRejected) {
-      // ALL APPROVED - create member
       const data = fieldData;
-
-      const now = new Date();
-      let year = now.getFullYear();
-      const sept30 = new Date(year, 8, 30);
-      if (now > sept30) {
-        year += 1;
-      }
-      const certificateValidUntil = new Date(year, 8, 30);
-
       const member = await prisma.member.create({
         data: {
           firstName: data.firstName,
@@ -397,7 +456,8 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
           dietType: data.dietType,
           shirtSize: data.shirtSize,
           acceptedDocuments: data.acceptedDocuments,
-          certificateValidUntil,
+          certificatePath: data.certificatePath || null,
+          certificateValidUntil: data.certificatePath ? nextCertificateValidUntil() : null,
           appRole: 'CLAN',
           sections: {
             create: (data.sectionIds || []).map((sId) => ({ sectionId: sId })),
@@ -425,12 +485,15 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
 
       return res.json({ status: 'approved', message: 'Član je prihvaćen.', member });
     } else {
-      // SOME REJECTED
       const updatedFieldData = { ...fieldData };
       const updatedFieldStatus = { ...fieldStatus };
 
       for (const [field, status] of Object.entries(fieldStatus)) {
         if (status === 'REJECTED') {
+          // Rejected certificate: delete the file from disk
+          if (field === 'certificatePath' && updatedFieldData.certificatePath) {
+            deleteCertificate(updatedFieldData.certificatePath);
+          }
           if (Array.isArray(updatedFieldData[field])) {
             updatedFieldData[field] = [];
           } else if (typeof updatedFieldData[field] === 'boolean') {

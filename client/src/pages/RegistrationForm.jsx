@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { jsonHeaders } from '../api/auth';
+import { authHeaders } from '../api/auth';
 import { useLookupData } from '../useLookupData';
 import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
@@ -9,10 +10,17 @@ import { GENDER_OPTIONS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE
 
 const FACULTY_OTHER = 'OTHER';
 
+function truncate(s, n = 30) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n) + '...' : s;
+}
+
 export default function RegistrationForm({ email, onSubmitted }) {
   const lookups = useLookupData();
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [certFile, setCertFile] = useState(null);
+  const [certError, setCertError] = useState('');
   const isKset = email.toLowerCase().endsWith('@kset.org');
 
   const form = useForm(
@@ -60,8 +68,8 @@ export default function RegistrationForm({ email, onSubmitted }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitError('');
+    setCertError('');
 
-    // Only validate privateEmail if @kset.org (otherwise it's the login email, set server-side)
     const fieldsToValidate = Object.keys(memberValidators).filter((f) => {
       if (f === 'privateEmail' && !isKset) return false;
       if (f === 'facultyOther' && values.facultyId !== FACULTY_OTHER) return false;
@@ -73,19 +81,46 @@ export default function RegistrationForm({ email, onSubmitted }) {
       return;
     }
 
+    if (!certFile) {
+      setCertError('Priložite potvrdu o studiranju (PDF).');
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const body = {
-        ...values,
-        homeSectionId: parseInt(values.homeSectionId),
-        facultyId: values.facultyId && values.facultyId !== FACULTY_OTHER ? parseInt(values.facultyId) : null,
-        facultyOther: values.facultyId === FACULTY_OTHER ? values.facultyOther : null,
-      };
+      const fd = new FormData();
+      fd.append('firstName', values.firstName);
+      fd.append('lastName', values.lastName);
+      fd.append('oib', values.oib);
+      fd.append('dateOfBirth', values.dateOfBirth);
+      fd.append('address', values.address);
+      fd.append('gender', values.gender);
+      fd.append('phone', values.phone);
+      fd.append('memberSince', values.memberSince);
+      fd.append('cardNumber', values.cardNumber);
+      fd.append('membershipLevel', values.membershipLevel);
+      fd.append('fullMemberSince', values.fullMemberSince || '');
+      fd.append('homeSectionId', String(parseInt(values.homeSectionId)));
+      fd.append('dietType', values.dietType);
+      fd.append('shirtSize', values.shirtSize);
+      fd.append('acceptedDocuments', String(values.acceptedDocuments));
+      if (isKset) fd.append('privateEmail', values.privateEmail);
+
+      fd.append('facultyId', values.facultyId && values.facultyId !== FACULTY_OTHER ? String(parseInt(values.facultyId)) : '');
+      fd.append('facultyOther', values.facultyId === FACULTY_OTHER ? values.facultyOther : '');
+
+      fd.append('sectionIds', JSON.stringify(values.sectionIds));
+      fd.append('teamIds', JSON.stringify(values.teamIds));
+      fd.append('drinkIds', JSON.stringify(values.drinkIds));
+      fd.append('allergyIds', JSON.stringify(values.allergyIds));
+
+      // file
+      fd.append('certificate', certFile);
 
       const res = await fetch('/api/pending', {
         method: 'POST',
-        headers: jsonHeaders(),
-        body: JSON.stringify(body),
+        headers: authHeaders(),
+        body: fd,
       });
 
       const data = await res.json();
@@ -101,6 +136,7 @@ export default function RegistrationForm({ email, onSubmitted }) {
       setSubmitting(false);
     }
   };
+
 
   return (
     <PageContainer title="Pristupna forma">
@@ -148,6 +184,24 @@ export default function RegistrationForm({ email, onSubmitted }) {
               <TextField name="facultyOther" label="Upišite fakultet" required
                 value={values.facultyOther} onChange={handleChange} onBlur={handleBlur} error={showError('facultyOther')} />
             )}
+          </div>
+          <div className="mt-2">
+            <label className="label">Potvrda o studiranju (PDF) <span className="text-brand-orange">*</span></label>
+            <div className="flex items-center gap-3">
+              <label className="btn-secondary cursor-pointer">
+                Odaberi datoteku
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setCertFile(e.target.files[0] || null)}
+                  className="hidden"
+                />
+              </label>
+              <span className="text-sm text-content-secondary">
+                {certFile ? truncate(certFile.name, 30) : 'Nije odabrano'}
+              </span>
+            </div>
+            {certError && <p className="field-error">{certError}</p>}
           </div>
         </Card>
 

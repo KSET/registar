@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { jsonHeaders } from '../api/auth';
+import { authHeaders } from '../api/auth';
 import { useLookupData } from '../useLookupData';
 import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
@@ -63,6 +63,7 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
   const lookups = useLookupData();
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [certFile, setCertFile] = useState(null);
 
   const initialValues = {};
   for (const key of fieldsToRefill) {
@@ -78,26 +79,40 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
     ([key]) => pending.fieldStatus[key] === 'APPROVED'
   );
 
+  const needsCertificate = fieldsToRefill.includes('certificatePath');
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitError('');
 
-    if (!form.validateAll(fieldsToRefill)) {
+    const fieldsToValidateForm = fieldsToRefill.filter((f) => f !== 'certificatePath');
+    if (!form.validateAll(fieldsToValidateForm)) {
       setSubmitError('Ispravite označena polja prije slanja.');
+      return;
+    }
+
+    if (needsCertificate && !certFile) {
+      setSubmitError('Priložite potvrdu o studiranju (PDF).');
       return;
     }
 
     setSubmitting(true);
     try {
-      const fields = { ...form.values };
-      if (fields.homeSectionId) {
-        fields.homeSectionId = parseInt(fields.homeSectionId);
+      const fields = {};
+      for (const key of fieldsToRefill) {
+        if (key === 'certificatePath') continue;
+        fields[key] = form.values[key];
       }
+      if (fields.homeSectionId) fields.homeSectionId = parseInt(fields.homeSectionId);
+
+      const fd = new FormData();
+      fd.append('fields', JSON.stringify(fields));
+      if (needsCertificate && certFile) fd.append('certificate', certFile);
 
       const res = await fetch('/api/pending/me', {
         method: 'PATCH',
-        headers: jsonHeaders(),
-        body: JSON.stringify({ fields }),
+        headers: authHeaders(),
+        body: fd,
       });
 
       const data = await res.json();
@@ -141,6 +156,17 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
           {fieldsToRefill.map((key) => (
             <RefillField key={key} fieldKey={key} form={form} lookups={lookups} />
           ))}
+          {needsCertificate && (
+            <div className="mb-4">
+              <label className="label">Potvrda o studiranju (PDF) <span className="text-brand-orange">*</span></label>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => setCertFile(e.target.files[0] || null)}
+                className="text-sm text-content-secondary"
+              />
+            </div>
+          )}
           <div className="flex justify-center">
             <button type="submit" disabled={submitting} className="btn-primary mt-2">
               {submitting ? 'Šaljem...' : 'Pošalji ispravke'}

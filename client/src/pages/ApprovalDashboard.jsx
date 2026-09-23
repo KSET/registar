@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { authHeaders, jsonHeaders } from '../api/auth';
+import { authHeaders, jsonHeaders, openCertificate, openPendingCertificate } from '../api/auth';
 import { useLookupData } from '../useLookupData';
 import { FIELD_LABELS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, GENDER_OPTIONS, fieldOrderIndex } from '../constants';
 import { PageContainer, Card, Alert, ConfirmDialog } from '../components/ui';
@@ -70,6 +70,7 @@ export default function ApprovalDashboard() {
       key: `fc-${c.id}`,
       type: 'fieldChange',
       id: c.id,
+      memberId: c.member.id,
       personName: `${c.member.firstName} ${c.member.lastName}`,
       email: c.member.ksetEmail || c.member.privateEmail,
       section: c.member.homeSection?.name || '-',
@@ -199,7 +200,23 @@ export default function ApprovalDashboard() {
                       {r.fields.map((f) => (
                         <tr key={f.name}>
                           <td className="text-content-secondary">{FIELD_LABELS[f.name] || f.name}</td>
-                          <td>{displayValue(f.name, f.value)}</td>
+                          <td>
+                            {f.name === 'certificatePath' ? (
+                              <button
+                                type="button"
+                                className="text-brand-orange hover:underline"
+                                onClick={() =>
+                                  (r.type === 'application'
+                                    ? openPendingCertificate(r.id)
+                                    : openCertificate(r.memberId, true)
+                                  ).catch((e) => setMessage(e.message))
+                                }
+                              >Otvori PDF
+                              </button>
+                            ) : (
+                              displayValue(f.name, f.value)
+                            )}
+                          </td>
                           <td>
                             <div className="flex gap-2 justify-end">
                               <button
