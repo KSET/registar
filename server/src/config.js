@@ -1,5 +1,13 @@
 require('dotenv').config();
 
+const jwtSecret = process.env.JWT_SECRET;
+if (!jwtSecret || jwtSecret == 'change_me_in_production' || jwtSecret.length < 32) {
+  console.error(
+    'FATAL: JWT_SECRET nije postavljen ili je preslab.'
+  );
+  process.exit(1);
+}
+
 module.exports = {
   port: process.env.SERVER_PORT || 4000,
   serverUrl: process.env.SERVER_URL || 'http://localhost:4000',
