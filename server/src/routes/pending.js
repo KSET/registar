@@ -145,6 +145,14 @@ router.post('/', authenticateToken, (req, res) => {
         return res.status(400).json({ errors });
       }
 
+      const { isEmailTaken } = require('../utils/emailUnique');
+      const emailsToCheck = isKset ? [email, privateEmail.trim()] : [email];
+      for (const e of emailsToCheck) {
+        if (await isEmailTaken(e)) {
+          return res.status(400).json({ error: `E-mail ${e} je već u upotrebi.` });
+        }
+      }
+
       // Save certificate to disk now; path travels with the application.
       certFilename = saveCertificateBuffer(firstName.trim(), lastName.trim(), req.file.buffer);
 

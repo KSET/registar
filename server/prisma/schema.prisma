@@ -87,7 +87,7 @@ model Member {
   faculty            Faculty?        @relation(fields: [facultyId], references: [id])
   facultyOther       String?
   phone              String
-  privateEmail       String
+  privateEmail       String          @unique
   privateEmailVerified Boolean       @default(false)
   ksetEmail          String?         @unique
   ksetEmailVerified  Boolean         @default(true)

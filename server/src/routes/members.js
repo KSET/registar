@@ -161,8 +161,13 @@ router.patch('/me', authenticateToken, async (req, res) => {
         select: { privateEmail: true },
       });
       if (current && data.privateEmail !== current.privateEmail) {
+        const { isEmailTaken } = require('../utils/emailUnique');
+        if (await isEmailTaken(data.privateEmail, memberId)) {
+          return res.status(400).json({ error: 'Taj e-mail je već u upotrebi.' });
+        }
         data.privateEmailVerified = false;
       }
+
     }
 
     const relationUpdates = {};
