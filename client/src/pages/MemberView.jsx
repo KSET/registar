@@ -35,7 +35,7 @@ function InfoRow({ label, value, children }) {
   return (
     <div className="flex justify-between gap-4 py-2 border-b border-surface-border last:border-0">
       <span className="text-content-secondary text-sm">{label}</span>
-      <span className="text-content-primary text-sm text-right">{children ?? value ?? '-'}</span>
+      <span className="text-content-primary text-sm text-right min-w-0 break-words">{children ?? value ?? '-'}</span>
     </div>
   );
 }
@@ -280,15 +280,19 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <InfoRow label="Matična sekcija" value={member.homeSection?.name} />
             <InfoRow label="Pridružene sekcije" value={member.sections.map((s) => s.section.name).join(', ') || '-'} />
             <InfoRow label="Timovi" value={member.teams.map((t) => t.team.name).join(', ') || '-'} />
-            <InfoRow label="Potvrda valjana do">
-              {formatDate(member.certificateValidUntil)}
-              {member.certificatePath && (
-                <span className="block mt-1">
+            <InfoRow label="Potvrda o studiranju">
+              {member.certificatePath ? (
+                <span className="block">
                   <button type="button" className="text-brand-orange hover:underline text-sm" onClick={handleOpenCert}>
                     Otvori potvrdu
                   </button>
                   <span className="block text-xs text-content-muted mt-0.5">{member.certificatePath}</span>
+                  <span className="block text-xs text-content-muted mt-0.5">
+                    Potvrda valjana do {formatDate(member.certificateValidUntil)}
+                  </span>
                 </span>
+              ) : (
+                '-'
               )}
             </InfoRow>
             {isAdmin && <InfoRow label="Rola" value={member.appRole} />}
