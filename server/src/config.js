@@ -9,6 +9,7 @@ if (!jwtSecret || jwtSecret == 'change_me_in_production' || jwtSecret.length < 3
 }
 
 module.exports = {
+  isProduction: process.env.NODE_ENV === 'production',
   port: process.env.SERVER_PORT || 4000,
   serverUrl: process.env.SERVER_URL || 'http://localhost:4000',
   clientUrl: process.env.CLIENT_URL || 'http://localhost:3000',

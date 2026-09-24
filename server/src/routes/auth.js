@@ -6,8 +6,10 @@ const { authenticateToken } = require('../middleware/auth');
 const prisma = require('../lib/prisma');
 const { logAction, logError } = require('../utils/auditLog');
 const { isKsetEmail } = require('../utils/email');
+const { createLinkNonce, consumeLinkNonce } = require('../utils/linkNonce');
 
 const router = express.Router();
+const JWT_ALGORITHM = 'HS256';
 
 // Matches on either email, but only if it's verified via OAuth.
 function findMemberByVerifiedEmail(email) {
@@ -40,10 +42,14 @@ router.get(
     failureRedirect: `${config.clientUrl}/login?error=auth_failed`,
   }),
   async (req, res) => {
-    const linkStateMatch = /^link:(\d+)$/.exec(req.query.state || '');
+    const linkStateMatch = /^link:([0-9a-f]{48})$/.exec(req.query.state || '');
 
     if (linkStateMatch) {
-      return handleEmailLinkCallback(req, res, parseInt(linkStateMatch[1], 10));
+      const memberId = consumeLinkNonce(linkStateMatch[1]);
+      if (!memberId) {
+        return res.redirect(`${config.clientUrl}/?linkError=invalid_state`);
+      }
+      return handleEmailLinkCallback(req, res, memberId);
     }
 
     try {
@@ -68,6 +74,7 @@ router.get(
 
       const token = jwt.sign(tokenPayload, config.jwtSecret, {
         expiresIn: '24h',
+        algorithm: JWT_ALGORITHM,
       });
 
       // Redirect to frontend with token
@@ -175,9 +182,17 @@ router.get('/me', authenticateToken, async (req, res) => {
 
 router.post('/refresh', authenticateToken, async (req, res) => {
   try {
-    const { email } = req.user;
+    const { email, memberId } = req.user;
 
-    const member = await findMemberByVerifiedEmail(email);
+    // Once a token is bound to a member, re-fetch that exact member by id -
+    // never re-derive identity from `email` alone. findMemberByVerifiedEmail
+    // is a findFirst() whose filters Prisma silently drops for an
+    // undefined/empty email, which would otherwise hand back an unrelated
+    // member's session. Email-based lookup is only for the pre-membership
+    // (isNewUser) case, where there's no memberId yet to trust.
+    const member = memberId
+      ? await prisma.member.findUnique({ where: { id: memberId } })
+      : await findMemberByVerifiedEmail(email);
 
     const tokenPayload = {
       email,
@@ -196,6 +211,7 @@ router.post('/refresh', authenticateToken, async (req, res) => {
 
     const token = jwt.sign(tokenPayload, config.jwtSecret, {
       expiresIn: '24h',
+      algorithm: JWT_ALGORITHM,
     });
 
     res.json({ token });
@@ -216,7 +232,7 @@ router.get('/google/link', (req, res, next) => {
 
   let decoded;
   try {
-    decoded = jwt.verify(token, config.jwtSecret);
+    decoded = jwt.verify(token, config.jwtSecret, { algorithms: [JWT_ALGORITHM] });
   } catch (err) {
     return res.status(403).json({ error: 'Nevažeći token.' });
   }
@@ -225,11 +241,13 @@ router.get('/google/link', (req, res, next) => {
     return res.status(400).json({ error: 'Morate biti prijavljeni kao član.' });
   }
 
+  const nonce = createLinkNonce(decoded.memberId);
+
   passport.authenticate('google', {
     scope: ['profile', 'email'],
     session: false,
     prompt: 'select_account',
-    state: `link:${decoded.memberId}`,
+    state: `link:${nonce}`,
   })(req, res, next);
 });
 

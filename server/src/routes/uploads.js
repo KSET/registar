@@ -4,7 +4,10 @@ const path = require('path');
 const fs = require('fs');
 const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
+const { verifyCurrentRole } = require('../middleware/verifyRole');
 const { logAction, logError } = require('../utils/auditLog');
+const { parsePositiveIntParam } = require('../utils/requestValidation');
+const { isPdfBuffer } = require('../utils/fileValidation');
 
 const router = express.Router();
 
@@ -38,11 +41,14 @@ function sanitizeName(s) {
 
 // Writes a PDF buffer to disk and returns the stored filename.
 // Name: ImePrezime_potvrda_YYYY_<timestamp>.pdf (timestamp avoids collisions).
-function saveCertificateBuffer(firstName, lastName, buffer) {
+// Async (fs.promises) - a sync write would block Node's single event loop
+// thread for every other request in flight, not just this one, for however
+// long the disk write takes.
+async function saveCertificateBuffer(firstName, lastName, buffer) {
   const year = academicStartYear();
   const ts = Date.now();
   const filename = `${sanitizeName(firstName)}${sanitizeName(lastName)}_potvrda_${year}_${ts}.pdf`;
-  fs.writeFileSync(path.join(UPLOAD_DIR, filename), buffer);
+  await fs.promises.writeFile(path.join(UPLOAD_DIR, filename), buffer);
   return filename;
 }
 
@@ -80,6 +86,9 @@ router.post('/certificate', authenticateToken, (req, res) => {
   upload.single('certificate')(req, res, async (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'Datoteka nije priložena.' });
+    if (!isPdfBuffer(req.file.buffer)) {
+      return res.status(400).json({ error: 'Datoteka nije valjan PDF.' });
+    }
 
     const { memberId } = req.user;
     try {
@@ -99,7 +108,7 @@ router.post('/certificate', authenticateToken, (req, res) => {
         return res.status(400).json({ error: 'Već ste poslali potvrdu na odobrenje.' });
       }
 
-      const filename = saveCertificateBuffer(member.firstName, member.lastName, req.file.buffer);
+      const filename = await saveCertificateBuffer(member.firstName, member.lastName, req.file.buffer);
 
       await prisma.pendingFieldChange.create({
         data: { memberId, fieldName: 'certificatePath', newValue: filename, status: 'PENDING' },
@@ -115,9 +124,12 @@ router.post('/certificate', authenticateToken, (req, res) => {
 });
 
 // GET /api/uploads/certificate/:memberId — serve approved member's certificate
-router.get('/certificate/:memberId', authenticateToken, async (req, res) => {
+router.get('/certificate/:memberId', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
-    const targetMemberId = parseInt(req.params.memberId);
+    const targetMemberId = parsePositiveIntParam(req.params.memberId);
+    if (targetMemberId === null) {
+      return res.status(400).json({ error: 'Nevažeći ID člana.' });
+    }
     if (!(await canView(req.user, targetMemberId))) {
       return res.status(403).json({ error: 'Nemate pravo pregledati ovu potvrdu.' });
     }
@@ -152,14 +164,17 @@ router.get('/certificate/:memberId', authenticateToken, async (req, res) => {
 
 // GET /api/uploads/pending-certificate/:pendingId — serve a pending application's certificate
 // (leader/admin reviewing a new application, before the member exists)
-router.get('/pending-certificate/:pendingId', authenticateToken, async (req, res) => {
+router.get('/pending-certificate/:pendingId', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
     if (!appRole || appRole === 'CLAN') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
-    const pendingId = parseInt(req.params.pendingId);
+    const pendingId = parsePositiveIntParam(req.params.pendingId);
+    if (pendingId === null) {
+      return res.status(400).json({ error: 'Nevažeći ID prijave.' });
+    }
     const pending = await prisma.pendingMember.findUnique({ where: { id: pendingId } });
     if (!pending) return res.status(404).json({ error: 'Prijava nije pronađena.' });
 

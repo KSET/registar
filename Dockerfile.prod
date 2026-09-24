@@ -1,0 +1,26 @@
+# Production image: builds the React client, then bundles it alongside the
+# Express server so one container serves both the API and the static app.
+# Build from the repo root: docker build -f Dockerfile.prod -t registar .
+
+FROM node:20-alpine AS client-build
+WORKDIR /app/client
+COPY client/package*.json ./
+RUN npm install
+COPY client/ ./
+RUN npm run build
+
+FROM node:20-alpine AS app
+WORKDIR /app
+
+COPY server/package*.json ./server/
+RUN cd server && npm install
+
+COPY server/prisma ./server/prisma
+RUN cd server && npx prisma generate
+
+COPY server/ ./server/
+COPY --from=client-build /app/client/dist ./client/dist
+
+WORKDIR /app/server
+ENV NODE_ENV=production
+CMD ["sh", "-c", "npx prisma migrate deploy && node src/index.js"]

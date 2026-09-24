@@ -1,15 +1,21 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 
 const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
+const { verifyCurrentRole } = require('../middleware/verifyRole');
 const { logAction, logError } = require('../utils/auditLog');
+const { parsePositiveIntParam } = require('../utils/requestValidation');
+const { deleteCertificate } = require('./uploads');
 
 const router = express.Router();
 
+// Toggle: when a certificate renewal is approved, delete the file it
+// replaces from disk. Set to false to keep superseded certificate files
+// around instead (e.g. if you'd rather archive them manually).
+const DELETE_SUPERSEDED_CERTIFICATE = true;
 
-router.get('/', authenticateToken, async (req, res) => {
+
+router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
 
@@ -61,7 +67,7 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-router.patch('/:id/review', authenticateToken, async (req, res) => {
+router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
 
@@ -69,7 +75,10 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
-    const changeId = parseInt(req.params.id);
+    const changeId = parsePositiveIntParam(req.params.id);
+    if (changeId === null) {
+      return res.status(400).json({ error: 'Nevažeći ID zahtjeva.' });
+    }
     const { decision } = req.body;
 
     if (!['APPROVED', 'REJECTED'].includes(decision)) {
@@ -106,7 +115,9 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
       if (change.fieldName === 'membershipLevel') {
         updateData.membershipLevel = change.newValue;
       } else if (change.fieldName === 'certificatePath') {
-        
+        if (DELETE_SUPERSEDED_CERTIFICATE && change.member.certificatePath) {
+          deleteCertificate(change.member.certificatePath);
+        }
         updateData.certificatePath = change.newValue;
         const now = new Date();
         let year = now.getFullYear();
@@ -135,8 +146,7 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
       return res.json({ message: 'Promjena je odobrena.' });
     } else {
       if (change.fieldName === 'certificatePath' && change.newValue) {
-        const filePath = path.join('/app/uploads/certificates', path.basename(change.newValue));
-        fs.unlink(filePath, () => {});
+        deleteCertificate(change.newValue);
       }
       await prisma.pendingFieldChange.update({
         where: { id: changeId },

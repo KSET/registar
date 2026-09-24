@@ -1,4 +1,5 @@
 const prisma = require('../src/lib/prisma');
+const { isKsetEmail } = require('../src/utils/email');
 
 async function main() {
   const sections = [
@@ -49,7 +50,14 @@ async function main() {
   console.log(`Seeded ${allergies.length} allergies`);
 
 
-  const drinks = ['Voda', 'Pivo', 'Sok', 'Kava'];
+  // Matches the categories used in the real KSET registration form / Excel export.
+  const drinks = [
+    'Alkoholno (piva, vodka itd.)',
+    'Gazirano (radenska, cola, fanta)',
+    'Negazirano (sok, voda, cedevita)',
+    'Čaj (topli, ledeni)',
+    'Kava (s mlijekom, bez mlijeka)',
+  ];
   for (const name of drinks) {
     await prisma.drink.upsert({
       where: { name },
@@ -71,30 +79,43 @@ async function main() {
   }
   console.log(`Seeded ${faculties.length} faculties`);
 
+  // ADMIN_EMAIL can be either a @kset.org address or a personal one (e.g. a
+  // Gmail the person actually logs in with) - matched against whichever
+  // field it actually lives in, not assumed to be ksetEmail. Runs every
+  // seed, so this account can never be permanently locked out of admin.
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@udruga.hr';
-  await prisma.member.upsert({
-    where: { ksetEmail: adminEmail },
-    update: { appRole: 'ADMINISTRATOR' },
-    create: {
-      firstName: 'KSET',
-      lastName: 'Admin',
-      oib: '00000000000',
-      dateOfBirth: new Date('1990-01-01'),
-      address: 'Admin adresa',
-      gender: 'M',
-      phone: '0000000000',
-      privateEmail: adminEmail,
-      ksetEmail: adminEmail,
-      memberSince: new Date(),
-      cardNumber: 'ADMIN-001',
-      membershipLevel: 'PUNOPRAVNO',
-      dietType: 'SVEJED',
-      shirtSize: 'M',
-      acceptedDocuments: true,
-      appRole: 'ADMINISTRATOR',
-      homeSectionId: 1,
-    },
+  const existingAdmin = await prisma.member.findFirst({
+    where: { OR: [{ ksetEmail: adminEmail }, { privateEmail: adminEmail }] },
   });
+
+  if (existingAdmin) {
+    await prisma.member.update({
+      where: { id: existingAdmin.id },
+      data: { appRole: 'ADMINISTRATOR', managedSectionId: null },
+    });
+  } else {
+    await prisma.member.create({
+      data: {
+        firstName: 'KSET',
+        lastName: 'Admin',
+        oib: '00000000000',
+        dateOfBirth: new Date('1990-01-01'),
+        address: 'Admin adresa',
+        gender: 'M',
+        phone: '0000000000',
+        privateEmail: adminEmail,
+        ksetEmail: isKsetEmail(adminEmail) ? adminEmail : null,
+        memberSince: new Date(),
+        cardNumber: 'ADMIN-001',
+        membershipLevel: 'PUNOPRAVNO',
+        dietType: 'SVEJED',
+        shirtSize: 'M',
+        acceptedDocuments: true,
+        appRole: 'ADMINISTRATOR',
+        homeSectionId: 1,
+      },
+    });
+  }
   console.log(`Seeded admin user: ${adminEmail}`);
 }
 

@@ -2,10 +2,13 @@ const express = require('express');
 const multer = require('multer');
 const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
+const { verifyCurrentRole } = require('../middleware/verifyRole');
 const { logAction, logError } = require('../utils/auditLog');
 const { isKsetEmail } = require('../utils/email');
 const { isValidOib } = require('../utils/oib');
 const { saveCertificateBuffer, deleteCertificate } = require('./uploads');
+const { parsePositiveIntParam, validateIdArray, checkFieldLength } = require('../utils/requestValidation');
+const { isPdfBuffer } = require('../utils/fileValidation');
 
 const router = express.Router();
 
@@ -22,6 +25,12 @@ const upload = multer({
 
 // Always set from the verified Google login, never user-editable.
 const NON_EDITABLE_PENDING_FIELDS = ['ksetEmail'];
+
+// "Ostalo" fields - personal preferences, not identity/eligibility data -
+// don't need a leader's explicit sign-off, so new applications start these
+// as already APPROVED instead of PENDING. They're still stored and shown
+// like any other field, just never block or appear in the review queue.
+const AUTO_APPROVED_FIELDS = ['dietType', 'shirtSize', 'drinkIds', 'allergyIds'];
 
 const PENDING_FIELD_VALIDATORS = {
   oib: (v) => (isValidOib(v) ? null : 'OIB nije ispravan.'),
@@ -140,6 +149,19 @@ router.post('/', authenticateToken, (req, res) => {
       if (!acceptedDocuments) errors.push('Morate prihvatiti akte i dokumente udruge.');
       if (!drinkIds || drinkIds.length === 0) errors.push('Morate odabrati barem jedno piće.');
       if (!req.file) errors.push('Potvrda o studiranju je obavezna (PDF).');
+      else if (!isPdfBuffer(req.file.buffer)) errors.push('Datoteka nije valjan PDF.');
+
+      for (const [field, val] of Object.entries({ firstName, lastName, address, phone, cardNumber, shirtSize, facultyOther })) {
+        const lengthError = checkFieldLength(field, val);
+        if (lengthError) errors.push(lengthError);
+      }
+      const sectionResult = validateIdArray(sectionIds, 'sectionIds');
+      const teamResult = validateIdArray(teamIds, 'teamIds');
+      const drinkResult = validateIdArray(drinkIds, 'drinkIds');
+      const allergyResult = validateIdArray(allergyIds, 'allergyIds');
+      for (const r of [sectionResult, teamResult, drinkResult, allergyResult]) {
+        if (!r.ok) errors.push(r.error);
+      }
 
       if (errors.length > 0) {
         return res.status(400).json({ errors });
@@ -154,7 +176,7 @@ router.post('/', authenticateToken, (req, res) => {
       }
 
       // Save certificate to disk now; path travels with the application.
-      certFilename = saveCertificateBuffer(firstName.trim(), lastName.trim(), req.file.buffer);
+      certFilename = await saveCertificateBuffer(firstName.trim(), lastName.trim(), req.file.buffer);
 
       const fieldData = {
         firstName: firstName.trim(),
@@ -174,10 +196,10 @@ router.post('/', authenticateToken, (req, res) => {
         membershipLevel,
         fullMemberSince: fullMemberSince || null,
         homeSectionId: parseInt(homeSectionId),
-        sectionIds,
-        teamIds,
-        drinkIds,
-        allergyIds,
+        sectionIds: sectionResult.ids,
+        teamIds: teamResult.ids,
+        drinkIds: drinkResult.ids,
+        allergyIds: allergyResult.ids,
         dietType,
         shirtSize: shirtSize.trim(),
         acceptedDocuments,
@@ -185,7 +207,7 @@ router.post('/', authenticateToken, (req, res) => {
 
       const fieldStatus = {};
       for (const key of Object.keys(fieldData)) {
-        fieldStatus[key] = 'PENDING';
+        fieldStatus[key] = AUTO_APPROVED_FIELDS.includes(key) ? 'APPROVED' : 'PENDING';
       }
 
       const pending = await prisma.pendingMember.create({
@@ -259,11 +281,14 @@ router.patch('/me', authenticateToken, (req, res) => {
         if (!req.file) {
           return res.status(400).json({ error: 'Potvrda o studiranju je obavezna (PDF).' });
         }
+        if (!isPdfBuffer(req.file.buffer)) {
+          return res.status(400).json({ error: 'Datoteka nije valjan PDF.' });
+        }
         // Delete old rejected file if it still lingers
         if (updatedFieldData.certificatePath) {
           deleteCertificate(updatedFieldData.certificatePath);
         }
-        certFilename = saveCertificateBuffer(
+        certFilename = await saveCertificateBuffer(
           updatedFieldData.firstName,
           updatedFieldData.lastName,
           req.file.buffer
@@ -286,6 +311,22 @@ router.patch('/me', authenticateToken, (req, res) => {
           if (validationError) {
             return res.status(400).json({ error: validationError });
           }
+        }
+        if (['sectionIds', 'teamIds', 'drinkIds', 'allergyIds'].includes(key)) {
+          const result = validateIdArray(value, key);
+          if (!result.ok) {
+            return res.status(400).json({ error: result.error });
+          }
+          if (key === 'drinkIds' && result.ids.length === 0) {
+            return res.status(400).json({ error: 'Morate odabrati barem jedno piće.' });
+          }
+          updatedFieldData[key] = result.ids;
+          updatedFieldStatus[key] = 'PENDING';
+          continue;
+        }
+        const lengthError = checkFieldLength(key, value);
+        if (lengthError) {
+          return res.status(400).json({ error: lengthError });
         }
         updatedFieldData[key] = value;
         updatedFieldStatus[key] = 'PENDING';
@@ -319,7 +360,7 @@ router.patch('/me', authenticateToken, (req, res) => {
 });
 
 // GET all pending applications for section leader / admin
-router.get('/section', authenticateToken, async (req, res) => {
+router.get('/section', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
 
@@ -363,7 +404,7 @@ router.get('/section', authenticateToken, async (req, res) => {
 });
 
 // PATCH review pending application - field by field
-router.patch('/:id/review', authenticateToken, async (req, res) => {
+router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
 
@@ -371,7 +412,10 @@ router.patch('/:id/review', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
-    const pendingId = parseInt(req.params.id);
+    const pendingId = parsePositiveIntParam(req.params.id);
+    if (pendingId === null) {
+      return res.status(400).json({ error: 'Nevažeći ID prijave.' });
+    }
     const { decisions } = req.body;
 
     if (!decisions || typeof decisions !== 'object') {

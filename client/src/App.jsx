@@ -8,6 +8,9 @@ import RegistrationForm from './pages/RegistrationForm';
 import PendingView from './pages/PendingView';
 import ApprovalDashboard from './pages/ApprovalDashboard';
 import MembersList from './pages/MembersList';
+import AdminDashboard from './pages/AdminDashboard';
+import ImportPage from './pages/ImportPage';
+import HonoraryMembersPage from './pages/HonoraryMembersPage';
 
 const LINK_MESSAGES = {
   success: 'E-mail je uspješno povezan.',
@@ -98,6 +101,7 @@ function App() {
 
   const appRole = user?.member?.appRole || user?.appRole;
   const isLeaderOrAdmin = appRole === 'VODITELJ_SEKCIJE' || appRole === 'ADMINISTRATOR';
+  const isAdmin = appRole === 'ADMINISTRATOR';
 
   const renderHome = () => {
     if (!user.isNewUser && user.member) {
@@ -131,6 +135,7 @@ function App() {
               <Layout
                 user={user}
                 isLeaderOrAdmin={isLeaderOrAdmin}
+                isAdmin={isAdmin}
                 onLogout={handleLogout}
                 linkMessage={linkMessage}
                 onDismissLinkMessage={() => setLinkMessage(null)}
@@ -145,6 +150,18 @@ function App() {
             <Route
               path="/clanovi"
               element={isLeaderOrAdmin ? <MembersList isAdmin={appRole === 'ADMINISTRATOR'} /> : <Navigate to="/" replace />}
+            />
+            <Route
+              path="/nadzorna-ploca"
+              element={isAdmin ? <AdminDashboard /> : <Navigate to="/" replace />}
+            />
+            <Route
+              path="/uvoz"
+              element={isAdmin ? <ImportPage /> : <Navigate to="/" replace />}
+            />
+            <Route
+              path="/pocasni-clanovi"
+              element={isLeaderOrAdmin ? <HonoraryMembersPage isAdmin={isAdmin} /> : <Navigate to="/" replace />}
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

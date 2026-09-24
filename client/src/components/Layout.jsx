@@ -10,7 +10,7 @@ function navClass({ isActive }) {
   ].join(' ');
 }
 
-export default function Layout({ isLeaderOrAdmin, onLogout, linkMessage, onDismissLinkMessage }) {
+export default function Layout({ isLeaderOrAdmin, isAdmin, onLogout, linkMessage, onDismissLinkMessage }) {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -34,6 +34,21 @@ export default function Layout({ isLeaderOrAdmin, onLogout, linkMessage, onDismi
       {isLeaderOrAdmin && (
         <NavLink to="/clanovi" className={navClass} onClick={closeMenu}>
           Članovi
+        </NavLink>
+      )}
+      {isLeaderOrAdmin && (
+        <NavLink to="/pocasni-clanovi" className={navClass} onClick={closeMenu}>
+          Počasni članovi
+        </NavLink>
+      )}
+      {isAdmin && (
+        <NavLink to="/nadzorna-ploca" className={navClass} onClick={closeMenu}>
+          Nadzorna ploča
+        </NavLink>
+      )}
+      {isAdmin && (
+        <NavLink to="/uvoz" className={navClass} onClick={closeMenu}>
+          Uvoz podataka
         </NavLink>
       )}
     </>

@@ -214,3 +214,13 @@ model Faculty {
   members Member[]
 }
 
+// Honorary members are not full registered Members - only a name is ever
+// on record for them (no OIB, contact info, etc.), so they get their own
+// lightweight model rather than shoehorning them into Member with dummy data.
+model HonoraryMember {
+  id        Int      @id @default(autoincrement())
+  firstName String
+  lastName  String
+  createdAt DateTime @default(now())
+}
+

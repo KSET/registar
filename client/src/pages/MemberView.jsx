@@ -281,6 +281,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
                   <button type="button" className="text-brand-orange hover:underline text-sm" onClick={handleOpenCert}>
                     Otvori potvrdu
                   </button>
+                  <span className="block text-xs text-content-muted mt-0.5">{member.certificatePath}</span>
                 </span>
               )}
             </InfoRow>
