@@ -18,8 +18,14 @@ function linkEmailUrl() {
   return `/api/auth/google/link?token=${encodeURIComponent(getToken())}`;
 }
 
+function truncate(s, n = 20) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n) + '...' : s;
+}
+
 const MEMBERSHIP_LABELS = Object.fromEntries(MEMBERSHIP_LEVEL_OPTIONS.map((o) => [o.value, o.label]));
 const DIET_LABELS = Object.fromEntries(DIET_TYPE_OPTIONS.map((o) => [o.value, o.label]));
+const GENDER_LABELS = Object.fromEntries(GENDER_OPTIONS.map((o) => [o.value, o.label]));
 
 function facultyDisplay(member) {
   return member.faculty?.name || member.facultyOther || '-';
@@ -236,7 +242,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <InfoRow label="Prezime" value={member.lastName} />
             <InfoRow label="OIB" value={member.oib} />
             <InfoRow label="Datum rođenja" value={formatDate(member.dateOfBirth)} />
-            <InfoRow label="Spol" value={member.gender === 'M' ? 'Muški' : 'Ženski'} />
+            <InfoRow label="Spol" value={GENDER_LABELS[member.gender] || member.gender} />
             <InfoRow label="Adresa" value={member.address} />
             <InfoRow label="Fakultet" value={facultyDisplay(member)} />
             <InfoRow label="Telefon" value={member.phone} />
@@ -311,12 +317,21 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
                 <p className="text-sm text-content-secondary">
                   Učitajte potvrdu o studiranju (PDF, max 5 MB). Ide voditelju na odobrenje.
                 </p>
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  onChange={(e) => setCertFile(e.target.files[0] || null)}
-                  className="text-sm text-content-secondary"
-                />
+                <p className="text-xs text-content-muted -mt-2">Preuzmi ju putem e-Građani</p>
+                <div className="flex items-center gap-3">
+                  <label className="btn-secondary cursor-pointer">
+                    Odaberi datoteku
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(e) => setCertFile(e.target.files[0] || null)}
+                      className="hidden"
+                    />
+                  </label>
+                  <span className="text-sm text-content-secondary truncate max-w-[200px]">
+                    {certFile ? truncate(certFile.name) : 'Nije odabrano'}
+                  </span>
+                </div>
                 <div>
                   <button type="button" className="btn-primary" disabled={certUploading || !certFile} onClick={handleCertUpload}>
                     {certUploading ? 'Šaljem...' : 'Učitaj potvrdu'}
@@ -355,6 +370,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
 
           <TextField name="address" label="Adresa" required
             value={values.address} onChange={handleChange} onBlur={handleBlur} error={showError('address')} />
+          <p className="text-xs text-content-muted -mt-3 mb-4">(Ulica, kućni broj, poštanski broj, mjesto)</p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <SelectField name="gender" label="Spol" required options={GENDER_OPTIONS}

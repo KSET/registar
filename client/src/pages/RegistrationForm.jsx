@@ -10,7 +10,7 @@ import { GENDER_OPTIONS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE
 
 const FACULTY_OTHER = 'OTHER';
 
-function truncate(s, n = 30) {
+function truncate(s, n = 20) {
   if (!s) return '';
   return s.length > n ? s.slice(0, n) + '...' : s;
 }
@@ -165,6 +165,7 @@ export default function RegistrationForm({ email, onSubmitted }) {
 
           <TextField name="address" label="Adresa" required
             value={values.address} onChange={handleChange} onBlur={handleBlur} error={showError('address')} />
+          <p className="text-xs text-content-muted -mt-3 mb-4">(Ulica, kućni broj, poštanski broj, mjesto)</p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <SelectField name="gender" label="Spol" required options={GENDER_OPTIONS}
@@ -187,6 +188,7 @@ export default function RegistrationForm({ email, onSubmitted }) {
           </div>
           <div className="mt-2">
             <label className="label">Potvrda o studiranju (PDF) <span className="text-brand-orange">*</span></label>
+            <p className="text-xs text-content-muted mb-2">Preuzmi ju putem e-Građani</p>
             <div className="flex items-center gap-3">
               <label className="btn-secondary cursor-pointer">
                 Odaberi datoteku
@@ -197,8 +199,8 @@ export default function RegistrationForm({ email, onSubmitted }) {
                   className="hidden"
                 />
               </label>
-              <span className="text-sm text-content-secondary">
-                {certFile ? truncate(certFile.name, 30) : 'Nije odabrano'}
+              <span className="text-sm text-content-secondary truncate max-w-[200px]">
+                {certFile ? truncate(certFile.name) : 'Nije odabrano'}
               </span>
             </div>
             {certError && <p className="field-error">{certError}</p>}
@@ -209,8 +211,13 @@ export default function RegistrationForm({ email, onSubmitted }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <TextField name="memberSince" label="Datum učlanjenja" type="date" required
               value={values.memberSince} onChange={handleChange} onBlur={handleBlur} error={showError('memberSince')} />
-            <TextField name="cardNumber" label="Broj iskaznice" required
-              value={values.cardNumber} onChange={handleChange} onBlur={handleBlur} error={showError('cardNumber')} />
+            <div>
+              <TextField name="cardNumber" label="Broj iskaznice" required
+                value={values.cardNumber} onChange={handleChange} onBlur={handleBlur} error={showError('cardNumber')} />
+              <p className="text-xs text-content-muted -mt-3">
+                Oblik unosa je: AA-xx, gdje je x broj. Primjer točnog unosa: BF-23
+              </p>
+            </div>
             <SelectField name="membershipLevel" label="Razina članstva" required options={MEMBERSHIP_LEVEL_OPTIONS}
               value={values.membershipLevel} onChange={handleMembershipChange} onBlur={handleBlur} error={showError('membershipLevel')} />
             {values.membershipLevel === 'PUNOPRAVNO' && (
@@ -244,7 +251,21 @@ export default function RegistrationForm({ email, onSubmitted }) {
           </div>
 
           <div className="mt-2">
-            <CheckboxField name="acceptedDocuments" label="Prihvaćam akte i dokumente udruge"
+            <CheckboxField name="acceptedDocuments"
+              label={
+                <>
+                  Prihvaćam{' '}
+                  <a
+                    href="https://www.ssfer.hr/dokumenti.html"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-brand-orange underline"
+                  >
+                    akte i dokumente udruge
+                  </a>
+                </>
+              }
               value={values.acceptedDocuments} onChange={handleChange} onBlur={handleBlur} error={showError('acceptedDocuments')} />
           </div>
         </Card>

@@ -10,6 +10,7 @@ datasource db {
 enum Gender {
   M
   Z
+  OSTALO
 }
 
 enum MembershipLevel {

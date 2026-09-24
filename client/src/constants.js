@@ -65,6 +65,7 @@ export const FIELD_LABELS = {
 export const GENDER_OPTIONS = [
   { value: 'M', label: 'Muški' },
   { value: 'Z', label: 'Ženski' },
+  { value: 'OSTALO', label: 'Ostalo' },
 ];
 
 export const MEMBERSHIP_LEVEL_OPTIONS = [

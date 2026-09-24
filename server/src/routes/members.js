@@ -169,7 +169,7 @@ router.patch('/me', authenticateToken, async (req, res) => {
       data.facultyOther = fother;
     }
 
-    if ('gender' in data && !['M', 'Z'].includes(data.gender)) {
+    if ('gender' in data && !['M', 'Z', 'OSTALO'].includes(data.gender)) {
       return res.status(400).json({ error: 'Nevažeći spol.' });
     }
     if ('dietType' in data && !['MESOJED', 'VEGETARIJANSTVO', 'VEGANSTVO', 'SVEJED'].includes(data.dietType)) {
@@ -532,7 +532,7 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
       }
     }
 
-    if ('gender' in data && !['M', 'Z'].includes(data.gender)) {
+    if ('gender' in data && !['M', 'Z', 'OSTALO'].includes(data.gender)) {
       return res.status(400).json({ error: 'Nevažeći spol.' });
     }
     if ('dietType' in data && !['MESOJED', 'VEGETARIJANSTVO', 'VEGANSTVO', 'SVEJED'].includes(data.dietType)) {

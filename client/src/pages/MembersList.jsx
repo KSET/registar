@@ -9,6 +9,7 @@ import { TextField, SelectField, MultiCheckDropdown, DateField } from '../compon
 
 const MEMBERSHIP_LABELS = Object.fromEntries(MEMBERSHIP_LEVEL_OPTIONS.map((o) => [o.value, o.label]));
 const DIET_LABELS = Object.fromEntries(DIET_TYPE_OPTIONS.map((o) => [o.value, o.label]));
+const GENDER_LABELS = Object.fromEntries(GENDER_OPTIONS.map((o) => [o.value, o.label]));
 const ROLE_LABELS = {
   CLAN: 'Član',
   VODITELJ_SEKCIJE: 'Voditelj sekcije',
@@ -315,7 +316,7 @@ function MemberDetail({ member, isAdmin, lookups, onBack, onRoleChanged, onUpdat
             <InfoRow label="Prezime" value={member.lastName} />
             <InfoRow label="OIB" value={member.oib} />
             <InfoRow label="Datum rođenja" value={formatDate(member.dateOfBirth)} />
-            <InfoRow label="Spol" value={member.gender === 'M' ? 'Muški' : 'Ženski'} />
+            <InfoRow label="Spol" value={GENDER_LABELS[member.gender] || member.gender} />
             <InfoRow label="Adresa" value={member.address} />
             <InfoRow label="Fakultet" value={facultyDisplay(member)} />
             <InfoRow label="Telefon" value={member.phone} />
@@ -516,6 +517,7 @@ function MemberEditForm({ member, lookups, submitting, setSubmitting, setError, 
 
         <TextField name="address" label="Adresa" required
           value={values.address} onChange={handleChange} onBlur={handleBlur} error={showError('address')} />
+        <p className="text-xs text-content-muted -mt-3 mb-4">(Ulica, kućni broj, poštanski broj, mjesto)</p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
           <SelectField name="gender" label="Spol" required options={GENDER_OPTIONS}

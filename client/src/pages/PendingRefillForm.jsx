@@ -13,6 +13,11 @@ function displayValue(value) {
   return String(value ?? '') || '-';
 }
 
+function truncate(s, n = 20) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n) + '...' : s;
+}
+
 function RefillField({ fieldKey, form, lookups }) {
   const { values, handleChange, handleBlur, showError } = form;
   const common = {
@@ -49,6 +54,13 @@ function RefillField({ fieldKey, form, lookups }) {
     case 'dateOfBirth':
     case 'memberSince':
       return <TextField {...common} label={label} type="date" required />;
+    case 'address':
+      return (
+        <>
+          <TextField {...common} label={label} required />
+          <p className="text-xs text-content-muted -mt-3 mb-4">(Ulica, kućni broj, poštanski broj, mjesto)</p>
+        </>
+      );
     case 'fullMemberSince':
       return <DateField {...common} label={label} />;
     case 'privateEmail':
@@ -163,12 +175,21 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
           {needsCertificate && (
             <div className="mb-4">
               <label className="label">Potvrda o studiranju (PDF) <span className="text-brand-orange">*</span></label>
-              <input
-                type="file"
-                accept="application/pdf"
-                onChange={(e) => setCertFile(e.target.files[0] || null)}
-                className="text-sm text-content-secondary"
-              />
+              <p className="text-xs text-content-muted mb-2">Preuzmi ju putem e-Građani</p>
+              <div className="flex items-center gap-3">
+                <label className="btn-secondary cursor-pointer">
+                  Odaberi datoteku
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(e) => setCertFile(e.target.files[0] || null)}
+                    className="hidden"
+                  />
+                </label>
+                <span className="text-sm text-content-secondary truncate max-w-[200px]">
+                  {certFile ? truncate(certFile.name) : 'Nije odabrano'}
+                </span>
+              </div>
             </div>
           )}
           <div className="flex justify-center">

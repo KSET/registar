@@ -37,7 +37,7 @@ const AUTO_APPROVED_FIELDS = ['dietType', 'shirtSize', 'drinkIds', 'allergyIds']
 
 const PENDING_FIELD_VALIDATORS = {
   oib: (v) => (isValidOib(v) ? null : 'OIB nije ispravan.'),
-  gender: (v) => (['M', 'Z'].includes(v) ? null : 'Nevažeći spol.'),
+  gender: (v) => (['M', 'Z', 'OSTALO'].includes(v) ? null : 'Nevažeći spol.'),
   membershipLevel: (v) =>
     ['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(v) ? null : 'Nevažeća razina članstva.',
   dietType: (v) =>
@@ -141,7 +141,7 @@ router.post('/', authenticateToken, (req, res) => {
       if (!oib || !isValidOib(oib)) errors.push('OIB nije ispravan.');
       if (!dateOfBirth) errors.push('Datum rođenja je obavezan.');
       if (!address || !address.trim()) errors.push('Adresa je obavezna.');
-      if (!gender || !['M', 'Z'].includes(gender)) errors.push('Spol je obavezan (M ili Ž).');
+      if (!gender || !['M', 'Z', 'OSTALO'].includes(gender)) errors.push('Spol je obavezan.');
       if (!facultyId && (!facultyOther || !facultyOther.trim())) {
         errors.push('Fakultet je obavezan (odaberi ili upiši pod Ostalo).');
       }
