@@ -6,7 +6,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { verifyCurrentRole } = require('../middleware/verifyRole');
 const { logAction } = require('../utils/auditLog');
 const { isXlsxBuffer } = require('../utils/fileValidation');
-const { parseSviBuffer } = require('../utils/importSvi');
+const { parseSectionSheets } = require('../utils/importSections');
 const { parseHonoraryBuffer, nameKey } = require('../utils/importHonorary');
 
 const router = express.Router();
@@ -67,7 +67,7 @@ router.post('/preview', authenticateToken, verifyCurrentRole, (req, res) => {
         getExisting(),
         getExistingHonoraryNames(),
       ]);
-      const result = parseSviBuffer(req.file.buffer, lookups, existing);
+      const result = parseSectionSheets(req.file.buffer, lookups, existing);
       const honoraryResult = parseHonoraryBuffer(req.file.buffer, existingHonoraryNames);
       res.json({
         totalRows: result.totalRows,
@@ -75,7 +75,7 @@ router.post('/preview', authenticateToken, verifyCurrentRole, (req, res) => {
         validCount: result.valid.length,
         invalidCount: result.invalid.length,
         invalid: result.invalid.slice(0, 100).map((e) => ({
-          rowNum: e.rowNum,
+          locations: e.locations,
           personName: e.personName,
           errors: e.errors,
         })),
@@ -110,7 +110,7 @@ router.post('/commit', authenticateToken, verifyCurrentRole, (req, res) => {
         getExisting(),
         getExistingHonoraryNames(),
       ]);
-      const result = parseSviBuffer(req.file.buffer, lookups, existing);
+      const result = parseSectionSheets(req.file.buffer, lookups, existing);
       const honoraryResult = parseHonoraryBuffer(req.file.buffer, existingHonoraryNames);
 
       if (result.valid.length === 0 && honoraryResult.valid.length === 0) {

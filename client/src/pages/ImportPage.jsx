@@ -76,8 +76,12 @@ export default function ImportPage() {
   return (
     <PageContainer title="Uvoz podataka iz Excela" maxWidth="max-w-4xl">
       <Alert kind="info">
-        Uvoz čita list <strong>„_Svi"</strong> (redovni članovi, samo <strong>„Aktivan član: Da"</strong>)
+        Uvoz čita 10 listova sekcija (<strong>„_Bike", „_Disco", „_Dramska", „_Foto", „_Glazbena",
+        „_Media", „_Pi", „_Comp", „_Tech", „_Video"</strong> - samo <strong>„Aktivan član: Da"</strong>)
         i list <strong>„C"</strong> (počasni članovi, samo ime i prezime) iz istog Excel registra.
+        Član koji je u više listova sekcija broji se jednom, a te sekcije postaju njegove
+        pridružene sekcije. Ako se listovi sekcija ne slažu oko nečijih podataka, redak se
+        preskače uz grešku umjesto nagađanja koji je list točan.
         Potvrde o studiranju (PDF) se ne uvoze — članovi ih naknadno sami učitavaju kroz svoj profil.
       </Alert>
 
@@ -152,16 +156,16 @@ export default function ImportPage() {
               <table className="table-base">
                 <thead>
                   <tr>
-                    <th>Redak</th>
                     <th>Ime</th>
+                    <th>List(ovi)</th>
                     <th>Greške</th>
                   </tr>
                 </thead>
                 <tbody>
                   {preview.invalid.map((row) => (
-                    <tr key={row.rowNum}>
-                      <td>{row.rowNum}</td>
+                    <tr key={`${row.personName}-${row.locations}`}>
                       <td>{row.personName}</td>
+                      <td className="text-content-muted text-xs">{row.locations}</td>
                       <td className="text-state-error text-xs">{row.errors.join(' · ')}</td>
                     </tr>
                   ))}
