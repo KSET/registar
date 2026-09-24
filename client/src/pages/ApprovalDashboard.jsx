@@ -16,6 +16,8 @@ export default function ApprovalDashboard() {
   const [decisions, setDecisions] = useState({});
   const [message, setMessage] = useState('');
   const [confirmReq, setConfirmReq] = useState(null);
+  const [declineReq, setDeclineReq] = useState(null);
+  const [declining, setDeclining] = useState(false);
 
   // ID -> name maps for human-readable values (stavka 17)
   const nameMaps = {
@@ -153,6 +155,32 @@ export default function ApprovalDashboard() {
     }
   };
 
+  const doDecline = async () => {
+    const req = declineReq;
+    setDeclineReq(null);
+    setMessage('');
+    setDeclining(true);
+    try {
+      const res = await fetch(`/api/pending/${req.id}`, {
+        method: 'DELETE',
+        headers: jsonHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error || 'Greška pri odbijanju.');
+        return;
+      }
+      setMessage(data.message);
+      setExpandedKey(null);
+      setDecisions({});
+      loadAll();
+    } catch (err) {
+      setMessage('Mrežna greška.');
+    } finally {
+      setDeclining(false);
+    }
+  };
+
   if (loading) {
     return <PageContainer title="Zahtjevi za odobrenje"><p className="text-content-secondary">Učitavanje...</p></PageContainer>;
   }
@@ -241,18 +269,30 @@ export default function ApprovalDashboard() {
                   </table>
                 </div>
 
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <span className="text-xs text-content-muted">
                     {allDecided ? 'Sva polja su odlučena.' : 'Odlučite za svako polje prije slanja.'}
                   </span>
-                  <button
-                    type="button"
-                    disabled={!allDecided}
-                    onClick={() => setConfirmReq(r)}
-                    className="btn-primary"
-                  >
-                    Pošalji odluke
-                  </button>
+                  <div className="flex gap-2">
+                    {r.type === 'application' && (
+                      <button
+                        type="button"
+                        disabled={declining}
+                        onClick={() => setDeclineReq(r)}
+                        className="btn-secondary border-state-error text-state-error hover:bg-state-error/10"
+                      >
+                        Odbij cijeli zahtjev
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={!allDecided}
+                      onClick={() => setConfirmReq(r)}
+                      className="btn-primary"
+                    >
+                      Pošalji odluke
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -266,6 +306,14 @@ export default function ApprovalDashboard() {
         message="Jeste li sigurni da želite poslati ove odluke? Ova akcija se ne može poništiti."
         onConfirm={doSubmit}
         onCancel={() => setConfirmReq(null)}
+      />
+
+      <ConfirmDialog
+        open={!!declineReq}
+        title="Odbijanje cijelog zahtjeva"
+        message={`Jeste li sigurni da želite odbiti cijeli zahtjev za ${declineReq?.personName || ''}? Prijava će biti potpuno uklonjena sa liste zahtjeva. Ova akcija se ne može poništiti.`}
+        onConfirm={doDecline}
+        onCancel={() => setDeclineReq(null)}
       />
     </PageContainer>
   );

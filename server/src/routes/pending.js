@@ -403,6 +403,60 @@ router.get('/section', authenticateToken, verifyCurrentRole, async (req, res) =>
   }
 });
 
+// DELETE decline an entire pending application in one action - for when it
+// shouldn't have been sent at all, rather than making a leader/admin reject
+// every field one by one. Removes it outright instead of leaving it stuck
+// in a "waiting for resubmission" limbo the way an all-fields-REJECTED
+// review does.
+router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
+  try {
+    const { appRole, memberId } = req.user;
+
+    if (!appRole || appRole === 'CLAN') {
+      return res.status(403).json({ error: 'Nemate ovlasti.' });
+    }
+
+    const pendingId = parsePositiveIntParam(req.params.id);
+    if (pendingId === null) {
+      return res.status(400).json({ error: 'Nevažeći ID prijave.' });
+    }
+
+    const pending = await prisma.pendingMember.findUnique({ where: { id: pendingId } });
+    if (!pending) {
+      return res.status(404).json({ error: 'Prijava nije pronađena.' });
+    }
+
+    if (appRole === 'VODITELJ_SEKCIJE') {
+      const leader = await prisma.member.findUnique({
+        where: { id: memberId },
+        select: { managedSectionId: true },
+      });
+      if (!leader || leader.managedSectionId !== pending.homeSectionId) {
+        return res.status(403).json({ error: 'Niste voditelj ove sekcije.' });
+      }
+    }
+
+    if (pending.fieldData?.certificatePath) {
+      deleteCertificate(pending.fieldData.certificatePath);
+    }
+
+    await prisma.pendingMember.delete({ where: { id: pendingId } });
+
+    await logAction(prisma, 'pending_application_declined', {
+      userId: memberId,
+      details: { pendingId, googleEmail: pending.googleEmail },
+    });
+
+    res.json({ message: 'Prijava je odbijena.' });
+  } catch (err) {
+    await logError(prisma, 'pending_application_decline', err, {
+      userId: req.user.memberId,
+      details: { pendingId: req.params.id },
+    });
+    res.status(500).json({ error: 'Greška na serveru.' });
+  }
+});
+
 // PATCH review pending application - field by field
 router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {

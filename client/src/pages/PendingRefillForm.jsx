@@ -5,7 +5,7 @@ import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
 import { FIELD_LABELS, GENDER_OPTIONS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
 import { PageContainer, Card, Alert } from '../components/ui';
-import { TextField, SelectField, MultiCheckDropdown, CheckboxField } from '../components/Field';
+import { TextField, SelectField, MultiCheckDropdown, CheckboxField, DateField } from '../components/Field';
 
 function displayValue(value) {
   if (Array.isArray(value)) return value.join(', ') || '-';
@@ -48,12 +48,16 @@ function RefillField({ fieldKey, form, lookups }) {
       return <CheckboxField {...common} label="Prihvaćam akte i dokumente udruge" />;
     case 'dateOfBirth':
     case 'memberSince':
+      return <TextField {...common} label={label} type="date" required />;
     case 'fullMemberSince':
-      return <TextField {...common} label={label} type="date" required={fieldKey !== 'fullMemberSince'} />;
+      return <DateField {...common} label={label} />;
     case 'privateEmail':
       return <TextField {...common} label={label} type="email" required />;
     case 'oib':
       return <TextField {...common} label={label} required maxLength={11} />;
+    case 'certificatePath':
+      // Handled by the dedicated file input below, not a text field.
+      return null;
     default:
       return <TextField {...common} label={label} required />;
   }

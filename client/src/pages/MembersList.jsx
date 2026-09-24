@@ -5,7 +5,7 @@ import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
 import { MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, GENDER_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
 import { PageContainer, Card, Alert, ConfirmDialog } from '../components/ui';
-import { TextField, SelectField, MultiCheckDropdown } from '../components/Field';
+import { TextField, SelectField, MultiCheckDropdown, DateField } from '../components/Field';
 
 const MEMBERSHIP_LABELS = Object.fromEntries(MEMBERSHIP_LEVEL_OPTIONS.map((o) => [o.value, o.label]));
 const DIET_LABELS = Object.fromEntries(DIET_TYPE_OPTIONS.map((o) => [o.value, o.label]));
@@ -544,7 +544,7 @@ function MemberEditForm({ member, lookups, submitting, setSubmitting, setError, 
             value={values.cardNumber} onChange={handleChange} onBlur={handleBlur} error={showError('cardNumber')} />
           <SelectField name="membershipLevel" label="Razina članstva" required options={MEMBERSHIP_LEVEL_OPTIONS}
             value={values.membershipLevel} onChange={handleChange} onBlur={handleBlur} error={showError('membershipLevel')} />
-          <TextField name="fullMemberSince" label="Datum postanka punopravnim članom" type="date"
+          <DateField name="fullMemberSince" label="Datum postanka punopravnim članom"
             value={values.fullMemberSince} onChange={handleChange} onBlur={handleBlur} error={showError('fullMemberSince')} />
           <SelectField name="homeSectionId" label="Matična sekcija" required
             options={lookups.sections.map((s) => ({ value: String(s.id), label: s.name }))}

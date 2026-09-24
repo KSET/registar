@@ -55,7 +55,25 @@ router.get(
     try {
       const { email, displayName } = req.user;
 
-      const member = await findMemberByVerifiedEmail(email);
+      let member = await findMemberByVerifiedEmail(email);
+
+      if (!member) {
+        // No verified match - but does an existing (e.g. bulk-imported)
+        // member already claim this exact email, just not verified yet?
+        // A successful Google login for that address IS the proof of
+        // ownership the verified flag exists to capture, so this is where
+        // it gets set - not a precondition members must clear beforehand.
+        const unverified = await prisma.member.findFirst({
+          where: { OR: [{ ksetEmail: email }, { privateEmail: email }] },
+        });
+        if (unverified) {
+          const matchedKset = unverified.ksetEmail === email;
+          member = await prisma.member.update({
+            where: { id: unverified.id },
+            data: matchedKset ? { ksetEmailVerified: true } : { privateEmailVerified: true },
+          });
+        }
+      }
 
       const tokenPayload = {
         email,

@@ -5,7 +5,7 @@ import { useLookupData } from '../useLookupData';
 import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
 import { PageContainer, Card, Alert } from '../components/ui';
-import { TextField, SelectField, MultiCheckDropdown, CheckboxField } from '../components/Field';
+import { TextField, SelectField, MultiCheckDropdown, CheckboxField, DateField } from '../components/Field';
 import { GENDER_OPTIONS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
 
 const FACULTY_OTHER = 'OTHER';
@@ -214,7 +214,7 @@ export default function RegistrationForm({ email, onSubmitted }) {
             <SelectField name="membershipLevel" label="Razina članstva" required options={MEMBERSHIP_LEVEL_OPTIONS}
               value={values.membershipLevel} onChange={handleMembershipChange} onBlur={handleBlur} error={showError('membershipLevel')} />
             {values.membershipLevel === 'PUNOPRAVNO' && (
-              <TextField name="fullMemberSince" label="Datum postanka punopravnim članom" type="date"
+              <DateField name="fullMemberSince" label="Datum postanka punopravnim članom"
                 value={values.fullMemberSince} onChange={handleChange} onBlur={handleBlur} error={showError('fullMemberSince')} />
             )}
           </div>

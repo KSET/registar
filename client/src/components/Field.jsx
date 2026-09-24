@@ -21,6 +21,67 @@ export function TextField({ name, label, value, onChange, onBlur, error, type = 
   );
 }
 
+function isoToDisplay(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+}
+
+function displayToIso(display) {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(display);
+  if (!m) return '';
+  const [, d, mo, y] = m;
+  // Reject calendar-invalid dates (e.g. 31/02/2024) rather than silently
+  // passing them through to the server as something else via Date parsing.
+  const asDate = new Date(`${y}-${mo}-${d}`);
+  if (asDate.getFullYear() !== Number(y) || asDate.getMonth() + 1 !== Number(mo) || asDate.getDate() !== Number(d)) {
+    return '';
+  }
+  return `${y}-${mo}-${d}`;
+}
+
+// Native <input type="date"> can't be forced to display dd/mm/yyyy - the
+// shown format follows the browser/OS locale, not anything the page sets.
+// This masks free-text entry into dd/mm/yyyy while still storing (and
+// exchanging with the rest of the form) the same yyyy-mm-dd ISO string a
+// native date input would.
+export function DateField({ name, label, value, onChange, onBlur, error, required }) {
+  const [text, setText] = useState(isoToDisplay(value));
+
+  useEffect(() => {
+    setText(isoToDisplay(value));
+  }, [value]);
+
+  const handleInput = (e) => {
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
+    let formatted = digits;
+    if (digits.length > 4) formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    else if (digits.length > 2) formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    setText(formatted);
+    onChange(name, displayToIso(formatted));
+  };
+
+  return (
+    <div className="mb-4">
+      <label className="label" htmlFor={name}>
+        {label} {required && <span className="text-brand-orange">*</span>}
+      </label>
+      <input
+        id={name}
+        name={name}
+        type="text"
+        inputMode="numeric"
+        placeholder="dd/mm/gggg"
+        maxLength={10}
+        value={text}
+        onChange={handleInput}
+        onBlur={() => onBlur(name)}
+        className={`input ${error ? 'input-error' : ''}`}
+      />
+      {error && <p className="field-error">{error}</p>}
+    </div>
+  );
+}
+
 export function SelectField({ name, label, value, onChange, onBlur, error, options, placeholder = '-- Odaberite --', required }) {
   return (
     <div className="mb-4">
