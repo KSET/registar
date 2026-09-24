@@ -23,8 +23,11 @@ const upload = multer({
   },
 });
 
-// Always set from the verified Google login, never user-editable.
-const NON_EDITABLE_PENDING_FIELDS = ['ksetEmail'];
+// The email that mirrors the applicant's verified Google login is locked -
+// for a KSET-domain applicant that's ksetEmail, otherwise it's privateEmail
+// (see nonEditableFields below). Any other email the applicant separately
+// supplied is editable like any other field.
+const NON_EDITABLE_PENDING_FIELDS = [];
 
 // "Ostalo" fields - personal preferences, not identity/eligibility data -
 // don't need a leader's explicit sign-off, so new applications start these
@@ -39,6 +42,14 @@ const PENDING_FIELD_VALIDATORS = {
     ['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(v) ? null : 'Nevažeća razina članstva.',
   dietType: (v) =>
     ['MESOJED', 'VEGETARIJANSTVO', 'VEGANSTVO', 'SVEJED'].includes(v) ? null : 'Nevažeći tip prehrane.',
+  // Not every member has a @kset.org address, so this may be left blank -
+  // only its format is checked when something's actually been entered.
+  ksetEmail: (v) => (!v || /^\S+@\S+\.\S+$/.test(v) ? null : 'Nevažeći format KSET e-maila.'),
+  // Someone who signed up via a @kset.org Google login still needs a
+  // personal address on file (e.g. for after they graduate/leave KSET),
+  // so this one stays required specifically for them.
+  privateEmail: (v, pending) =>
+    isKsetEmail(pending.googleEmail) && !v ? 'Privatni e-mail je obavezan.' : null,
 };
 
 function parseArr(v) {
@@ -307,7 +318,7 @@ router.patch('/me', authenticateToken, (req, res) => {
         }
         const validate = PENDING_FIELD_VALIDATORS[key];
         if (validate) {
-          const validationError = validate(value);
+          const validationError = validate(value, pending);
           if (validationError) {
             return res.status(400).json({ error: validationError });
           }

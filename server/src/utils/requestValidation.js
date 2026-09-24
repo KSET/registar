@@ -42,6 +42,7 @@ const FIELD_MAX_LENGTHS = {
   shirtSize: 10,
   facultyOther: 200,
   privateEmail: 254,
+  ksetEmail: 254,
 };
 
 // Returns an error string if `value` exceeds the configured max length for
