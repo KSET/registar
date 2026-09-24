@@ -12,6 +12,7 @@ const router = express.Router();
 const LOCKED_FIELDS = ['oib', 'dateOfBirth', 'cardNumber', 'memberSince'];
 const APPROVAL_FIELDS = ['membershipLevel'];
 const CERTIFICATE_FIELDS = ['certificatePath', 'certificateValidUntil'];
+const MAX_LEADERS_PER_SECTION = 2;
 
 const EDITABLE_SCALAR_FIELDS = [
   'firstName',
@@ -712,16 +713,17 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
         return res.status(400).json({ error: 'Odaberite sekciju koju voditelj vodi.' });
       }
 
-      const existingLeader = await prisma.member.findFirst({
+      const existingLeaders = await prisma.member.findMany({
         where: {
           appRole: 'VODITELJ_SEKCIJE',
           managedSectionId: newManagedSectionId,
           id: { not: targetId },
         },
       });
-      if (existingLeader) {
+      if (existingLeaders.length >= MAX_LEADERS_PER_SECTION) {
+        const names = existingLeaders.map((l) => `${l.firstName} ${l.lastName}`).join(', ');
         return res.status(400).json({
-          error: `Sekcija već ima voditelja (${existingLeader.firstName} ${existingLeader.lastName}). Prvo ga skinite.`,
+          error: `Sekcija već ima ${MAX_LEADERS_PER_SECTION} voditelja (${names}). Prvo skinite jednog od njih.`,
         });
       }
     }

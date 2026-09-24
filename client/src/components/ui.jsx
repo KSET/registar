@@ -31,6 +31,21 @@ export function Alert({ kind = 'info', children }) {
   );
 }
 
+export function ErrorPopup({ message, onClose }) {
+  if (!message) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+      <div className="card p-6 w-full max-w-sm">
+        <h3 className="text-lg font-semibold mb-2 text-state-error">Greška</h3>
+        <p className="text-content-secondary text-sm mb-6">{message}</p>
+        <div className="flex justify-end">
+          <button onClick={onClose} className="btn-primary">U redu</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ConfirmDialog({ open, title, message, onConfirm, onCancel }) {
   if (!open) return null;
   return (

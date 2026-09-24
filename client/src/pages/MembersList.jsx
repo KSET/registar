@@ -4,7 +4,7 @@ import { useLookupData } from '../useLookupData';
 import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
 import { MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, GENDER_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
-import { PageContainer, Card, Alert, ConfirmDialog } from '../components/ui';
+import { PageContainer, Card, Alert, ConfirmDialog, ErrorPopup } from '../components/ui';
 import { TextField, SelectField, MultiCheckDropdown, DateField } from '../components/Field';
 
 const MEMBERSHIP_LABELS = Object.fromEntries(MEMBERSHIP_LEVEL_OPTIONS.map((o) => [o.value, o.label]));
@@ -423,6 +423,8 @@ function MemberDetail({ member, isAdmin, lookups, onBack, onRoleChanged, onUpdat
         onConfirm={submitDelete}
         onCancel={() => setDeleteConfirmOpen(false)}
       />
+
+      <ErrorPopup message={error} onClose={() => setError('')} />
     </PageContainer>
   );
 }
