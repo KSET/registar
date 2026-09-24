@@ -89,11 +89,21 @@ async function main() {
   });
 
   if (existingAdmin) {
+    // Whichever field matched is the real login identity for this account -
+    // mark it verified, or login's verified-only lookup will never find it
+    // (while the unrelated uniqueness check on signup still would, since
+    // that one doesn't care about verification - a deadlock otherwise).
+    const matchedKset = existingAdmin.ksetEmail === adminEmail;
     await prisma.member.update({
       where: { id: existingAdmin.id },
-      data: { appRole: 'ADMINISTRATOR', managedSectionId: null },
+      data: {
+        appRole: 'ADMINISTRATOR',
+        managedSectionId: null,
+        ...(matchedKset ? { ksetEmailVerified: true } : { privateEmailVerified: true }),
+      },
     });
   } else {
+    const adminIsKset = isKsetEmail(adminEmail);
     await prisma.member.create({
       data: {
         firstName: 'KSET',
@@ -104,7 +114,9 @@ async function main() {
         gender: 'M',
         phone: '0000000000',
         privateEmail: adminEmail,
-        ksetEmail: isKsetEmail(adminEmail) ? adminEmail : null,
+        privateEmailVerified: !adminIsKset,
+        ksetEmail: adminIsKset ? adminEmail : null,
+        ksetEmailVerified: adminIsKset,
         memberSince: new Date(),
         cardNumber: 'ADMIN-001',
         membershipLevel: 'PUNOPRAVNO',
