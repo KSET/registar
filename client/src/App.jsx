@@ -33,15 +33,36 @@ function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
     const linked = params.get('linked');
     const linkError = params.get('linkError');
     const path = window.location.pathname;
+    const loginCode = path === '/auth/callback'
+      ? new URLSearchParams(window.location.hash.slice(1)).get('login_code')
+      : null;
 
-    if (path === '/auth/callback' && token) {
-      setToken(token);
-      window.history.replaceState({}, '', '/');
-    }
+    const initialize = async () => {
+      if (loginCode) {
+        window.history.replaceState({}, '', '/');
+        try {
+          const res = await fetch('/api/auth/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: loginCode }),
+          });
+          if (!res.ok) throw new Error('OAuth code exchange failed');
+          const data = await res.json();
+          setToken(data.token);
+        } catch (err) {
+          clearToken();
+          setLoading(false);
+          return;
+        }
+      } else if (path === '/auth/callback') {
+        window.history.replaceState({}, '', '/');
+      }
+
+      await loadUser();
+    };
 
     if (linked || linkError) {
       setLinkMessage(
@@ -50,7 +71,7 @@ function App() {
       window.history.replaceState({}, '', '/');
     }
 
-    loadUser();
+    initialize();
   }, []);
 
   const loadUser = async () => {
@@ -149,7 +170,7 @@ function App() {
             />
             <Route
               path="/clanovi"
-              element={isLeaderOrAdmin ? <MembersList isAdmin={appRole === 'ADMINISTRATOR'} /> : <Navigate to="/" replace />}
+              element={isLeaderOrAdmin ? <MembersList isAdmin={isAdmin} canManageMembership /> : <Navigate to="/" replace />}
             />
             <Route
               path="/nadzorna-ploca"

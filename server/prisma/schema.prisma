@@ -83,6 +83,9 @@ model Member {
   oib                String          @unique @db.VarChar(11)
   dateOfBirth        DateTime        @db.Date
   address            String
+  houseNumber        String?
+  postalCode         String?
+  city               String?
   gender             Gender
   facultyId          Int?
   faculty            Faculty?        @relation(fields: [facultyId], references: [id])
@@ -93,7 +96,7 @@ model Member {
   ksetEmail          String?         @unique
   ksetEmailVerified  Boolean         @default(true)
   memberSince        DateTime        @db.Date
-  cardNumber         String          @unique
+  cardNumber         String?         @unique
   membershipLevel    MembershipLevel
   fullMemberSince    DateTime?       @db.Date
   dietType           DietType

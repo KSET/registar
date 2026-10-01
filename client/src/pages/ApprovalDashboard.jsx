@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { authHeaders, jsonHeaders, openCertificate } from '../api/auth';
 import { useLookupData } from '../useLookupData';
 import { FIELD_LABELS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, GENDER_OPTIONS, fieldOrderIndex } from '../constants';
+import { formatDate } from '../date';
+import MembershipLabel from '../components/MembershipLabel';
 import { PageContainer, Card, Alert, ConfirmDialog } from '../components/ui';
 
 const MEMBERSHIP_LABELS = Object.fromEntries(MEMBERSHIP_LEVEL_OPTIONS.map((o) => [o.value, o.label]));
@@ -85,6 +87,7 @@ export default function ApprovalDashboard() {
 
   const displayValue = (fieldName, value) => {
     if (fieldName === 'membershipLevel') return MEMBERSHIP_LABELS[value] || value;
+    if (['dateOfBirth', 'memberSince', 'fullMemberSince'].includes(fieldName)) return formatDate(value);
     if (fieldName === 'dietType') return DIET_LABELS[value] || value;
     if (fieldName === 'gender') return GENDER_LABELS[value] || value;
     if (fieldName === 'homeSectionId') return homeSectionMap[value] || value;
@@ -242,7 +245,9 @@ export default function ApprovalDashboard() {
                               >Otvori PDF
                               </button>
                             ) : (
-                              displayValue(f.name, f.value)
+                              f.name === 'membershipLevel'
+                                ? <MembershipLabel value={f.value} />
+                                : displayValue(f.name, f.value)
                             )}
                           </td>
                           <td>

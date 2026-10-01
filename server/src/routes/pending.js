@@ -7,8 +7,8 @@ const { logAction, logError } = require('../utils/auditLog');
 const { isKsetEmail } = require('../utils/email');
 const { isValidOib } = require('../utils/oib');
 const { saveCertificateBuffer, deleteCertificate } = require('./uploads');
-const { parsePositiveIntParam, validateIdArray, checkFieldLength } = require('../utils/requestValidation');
-const { isPdfBuffer } = require('../utils/fileValidation');
+const { parsePositiveIntParam, isValidDateOnly, validateIdArray, checkFieldLength } = require('../utils/requestValidation');
+const { isPdfBuffer, normalizePdfBuffer } = require('../utils/fileValidation');
 
 const router = express.Router();
 
@@ -27,16 +27,25 @@ const upload = multer({
 // for a KSET-domain applicant that's ksetEmail, otherwise it's privateEmail
 // (see nonEditableFields below). Any other email the applicant separately
 // supplied is editable like any other field.
-const NON_EDITABLE_PENDING_FIELDS = [];
+const NON_EDITABLE_PENDING_FIELDS = ['membershipLevel', 'cardNumber', 'memberSince'];
 
-// "Ostalo" fields - personal preferences, not identity/eligibility data -
-// don't need a leader's explicit sign-off, so new applications start these
-// as already APPROVED instead of PENDING. They're still stored and shown
-// like any other field, just never block or appear in the review queue.
-const AUTO_APPROVED_FIELDS = ['dietType', 'shirtSize', 'drinkIds', 'allergyIds'];
+// These values do not require applicant or leader decisions: preferences can
+// be updated later, and membership/card number are system/manager controlled.
+const AUTO_APPROVED_FIELDS = [
+  'dietType', 'shirtSize', 'drinkIds', 'allergyIds', 'membershipLevel', 'cardNumber',
+];
+
+const requiredPendingText = (label) => (value) =>
+  typeof value === 'string' && value.trim() ? null : `${label} je obavezno polje.`;
 
 const PENDING_FIELD_VALIDATORS = {
   oib: (v) => (isValidOib(v) ? null : 'OIB nije ispravan.'),
+  dateOfBirth: (v) => (isValidDateOnly(v) ? null : 'Datum rođenja nije ispravan.'),
+  homeSectionId: (v) => (parsePositiveIntParam(v) !== null ? null : 'Matična sekcija nije ispravna.'),
+  address: requiredPendingText('Adresa'),
+  houseNumber: requiredPendingText('Kućni broj'),
+  postalCode: requiredPendingText('Poštanski broj'),
+  city: requiredPendingText('Mjesto'),
   gender: (v) => (['M', 'Z', 'OSTALO'].includes(v) ? null : 'Nevažeći spol.'),
   membershipLevel: (v) =>
     ['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(v) ? null : 'Nevažeća razina članstva.',
@@ -121,9 +130,8 @@ router.post('/', authenticateToken, (req, res) => {
       }
 
       const {
-        firstName, lastName, oib, dateOfBirth, address, gender, facultyId, facultyOther,
-        phone, privateEmail, memberSince, cardNumber, membershipLevel,
-        fullMemberSince, homeSectionId, dietType, shirtSize,
+        firstName, lastName, oib, dateOfBirth, address, houseNumber, postalCode, city,
+        gender, facultyId, facultyOther, phone, privateEmail, homeSectionId, dietType, shirtSize,
       } = req.body;
 
       const sectionIds = parseArr(req.body.sectionIds);
@@ -132,6 +140,8 @@ router.post('/', authenticateToken, (req, res) => {
       const allergyIds = parseArr(req.body.allergyIds);
       const acceptedDocuments = parseBool(req.body.acceptedDocuments);
 
+      if (req.file) req.file.buffer = normalizePdfBuffer(req.file.buffer);
+
       const isKset = isKsetEmail(email);
 
       const errors = [];
@@ -139,20 +149,21 @@ router.post('/', authenticateToken, (req, res) => {
       if (!firstName || !firstName.trim()) errors.push('Ime je obavezno.');
       if (!lastName || !lastName.trim()) errors.push('Prezime je obavezno.');
       if (!oib || !isValidOib(oib)) errors.push('OIB nije ispravan.');
-      if (!dateOfBirth) errors.push('Datum rođenja je obavezan.');
+      if (!isValidDateOnly(dateOfBirth)) errors.push('Datum rođenja nedostaje ili nije ispravan.');
       if (!address || !address.trim()) errors.push('Adresa je obavezna.');
+      if (!houseNumber || !houseNumber.trim()) errors.push('Kućni broj je obavezan.');
+      if (!postalCode || !postalCode.trim()) errors.push('Poštanski broj je obavezan.');
+      if (!city || !city.trim()) errors.push('Mjesto je obavezno.');
       if (!gender || !['M', 'Z', 'OSTALO'].includes(gender)) errors.push('Spol je obavezan.');
-      if (!facultyId && (!facultyOther || !facultyOther.trim())) {
+      const parsedFacultyId = facultyId ? parsePositiveIntParam(facultyId) : null;
+      if (facultyId && parsedFacultyId === null) errors.push('Nevažeći fakultet.');
+      if (!parsedFacultyId && (!facultyOther || !facultyOther.trim())) {
         errors.push('Fakultet je obavezan (odaberi ili upiši pod Ostalo).');
       }
       if (!phone || !phone.trim()) errors.push('Broj telefona je obavezan.');
       if (isKset && (!privateEmail || !privateEmail.trim())) errors.push('Privatni e-mail je obavezan.');
-      if (!memberSince) errors.push('Datum učlanjenja je obavezan.');
-      if (!cardNumber || !cardNumber.trim()) errors.push('Broj iskaznice je obavezan.');
-      if (!membershipLevel || !['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(membershipLevel)) {
-        errors.push('Razina članstva je obavezna.');
-      }
-      if (!homeSectionId) errors.push('Matična sekcija je obavezna.');
+      const parsedHomeSectionId = parsePositiveIntParam(homeSectionId);
+      if (parsedHomeSectionId === null) errors.push('Matična sekcija je obavezna.');
       if (!dietType || !['MESOJED', 'VEGETARIJANSTVO', 'VEGANSTVO', 'SVEJED'].includes(dietType)) {
         errors.push('Tip prehrane je obavezan.');
       }
@@ -162,7 +173,7 @@ router.post('/', authenticateToken, (req, res) => {
       if (!req.file) errors.push('Potvrda o studiranju je obavezna (PDF).');
       else if (!isPdfBuffer(req.file.buffer)) errors.push('Datoteka nije valjan PDF.');
 
-      for (const [field, val] of Object.entries({ firstName, lastName, address, phone, cardNumber, shirtSize, facultyOther })) {
+      for (const [field, val] of Object.entries({ firstName, lastName, address, houseNumber, postalCode, city, phone, shirtSize, facultyOther })) {
         const lengthError = checkFieldLength(field, val);
         if (lengthError) errors.push(lengthError);
       }
@@ -172,6 +183,35 @@ router.post('/', authenticateToken, (req, res) => {
       const allergyResult = validateIdArray(allergyIds, 'allergyIds');
       for (const r of [sectionResult, teamResult, drinkResult, allergyResult]) {
         if (!r.ok) errors.push(r.error);
+      }
+      if (sectionResult.ok && parsedHomeSectionId !== null && sectionResult.ids.includes(parsedHomeSectionId)) {
+        errors.push('Matična sekcija ne može biti i pridružena sekcija.');
+      }
+
+      const relationChecks = [
+        [sectionResult, prisma.section, 'sekcije'],
+        [teamResult, prisma.team, 'timovi'],
+        [drinkResult, prisma.drink, 'pića'],
+        [allergyResult, prisma.allergy, 'alergije'],
+      ];
+      for (const [result, model, label] of relationChecks) {
+        if (!result.ok) continue;
+        if (new Set(result.ids).size !== result.ids.length) {
+          errors.push(`Odabir sadrži duplicirane stavke (${label}).`);
+          continue;
+        }
+        if (result.ids.length > 0) {
+          const found = await model.count({ where: { id: { in: result.ids } } });
+          if (found !== result.ids.length) errors.push(`Odabir sadrži nepostojeće stavke (${label}).`);
+        }
+      }
+      if (parsedHomeSectionId !== null) {
+        const homeSection = await prisma.section.findUnique({ where: { id: parsedHomeSectionId }, select: { id: true } });
+        if (!homeSection) errors.push('Matična sekcija ne postoji.');
+      }
+      if (parsedFacultyId !== null) {
+        const faculty = await prisma.faculty.findUnique({ where: { id: parsedFacultyId }, select: { id: true } });
+        if (!faculty) errors.push('Odabrani fakultet ne postoji.');
       }
 
       if (errors.length > 0) {
@@ -195,18 +235,20 @@ router.post('/', authenticateToken, (req, res) => {
         oib,
         dateOfBirth,
         address: address.trim(),
+        houseNumber: houseNumber.trim(),
+        postalCode: postalCode.trim(),
+        city: city.trim(),
         gender,
-        facultyId: facultyId ? parseInt(facultyId) : null,
+        facultyId: parsedFacultyId,
         facultyOther: facultyOther ? facultyOther.trim() : null,
         phone: phone.trim(),
         privateEmail: isKset ? privateEmail.trim() : email,
         ksetEmail: isKset ? email : null,
         certificatePath: certFilename,
-        memberSince,
-        cardNumber: cardNumber.trim(),
-        membershipLevel,
-        fullMemberSince: fullMemberSince || null,
-        homeSectionId: parseInt(homeSectionId),
+        cardNumber: null,
+        membershipLevel: 'PRIDRUZENO',
+        fullMemberSince: null,
+        homeSectionId: parsedHomeSectionId,
         sectionIds: sectionResult.ids,
         teamIds: teamResult.ids,
         drinkIds: drinkResult.ids,
@@ -226,7 +268,7 @@ router.post('/', authenticateToken, (req, res) => {
           googleEmail: email,
           fieldData,
           fieldStatus,
-          homeSectionId: parseInt(homeSectionId),
+          homeSectionId: parsedHomeSectionId,
           status: 'PENDING',
         },
         include: { homeSection: true },
@@ -287,25 +329,16 @@ router.patch('/me', authenticateToken, (req, res) => {
         ? NON_EDITABLE_PENDING_FIELDS
         : [...NON_EDITABLE_PENDING_FIELDS, 'privateEmail'];
 
-      // Handle certificate re-upload separately (comes as a file, not in fields)
-      if (updatedFieldStatus.certificatePath === 'REJECTED') {
+      const replacingRejectedCertificate = updatedFieldStatus.certificatePath === 'REJECTED';
+      const previousRejectedCertificate = updatedFieldData.certificatePath;
+      if (replacingRejectedCertificate) {
         if (!req.file) {
           return res.status(400).json({ error: 'Potvrda o studiranju je obavezna (PDF).' });
         }
+        req.file.buffer = normalizePdfBuffer(req.file.buffer);
         if (!isPdfBuffer(req.file.buffer)) {
           return res.status(400).json({ error: 'Datoteka nije valjan PDF.' });
         }
-        // Delete old rejected file if it still lingers
-        if (updatedFieldData.certificatePath) {
-          deleteCertificate(updatedFieldData.certificatePath);
-        }
-        certFilename = await saveCertificateBuffer(
-          updatedFieldData.firstName,
-          updatedFieldData.lastName,
-          req.file.buffer
-        );
-        updatedFieldData.certificatePath = certFilename;
-        updatedFieldStatus.certificatePath = 'PENDING';
       }
 
       for (const [key, value] of Object.entries(fields)) {
@@ -328,8 +361,23 @@ router.patch('/me', authenticateToken, (req, res) => {
           if (!result.ok) {
             return res.status(400).json({ error: result.error });
           }
+          if (new Set(result.ids).size !== result.ids.length) {
+            return res.status(400).json({ error: `${key} sadrži duplicirane stavke.` });
+          }
           if (key === 'drinkIds' && result.ids.length === 0) {
             return res.status(400).json({ error: 'Morate odabrati barem jedno piće.' });
+          }
+          const model = {
+            sectionIds: prisma.section,
+            teamIds: prisma.team,
+            drinkIds: prisma.drink,
+            allergyIds: prisma.allergy,
+          }[key];
+          if (result.ids.length > 0) {
+            const found = await model.count({ where: { id: { in: result.ids } } });
+            if (found !== result.ids.length) {
+              return res.status(400).json({ error: `${key} sadrži nepostojeće stavke.` });
+            }
           }
           updatedFieldData[key] = result.ids;
           updatedFieldStatus[key] = 'PENDING';
@@ -344,8 +392,25 @@ router.patch('/me', authenticateToken, (req, res) => {
       }
 
       const newHomeSectionId = fields.homeSectionId
-        ? parseInt(fields.homeSectionId)
+        ? parsePositiveIntParam(fields.homeSectionId)
         : pending.homeSectionId;
+      if (fields.homeSectionId) {
+        const homeSection = await prisma.section.findUnique({ where: { id: newHomeSectionId }, select: { id: true } });
+        if (!homeSection) return res.status(400).json({ error: 'Odabrana matična sekcija ne postoji.' });
+      }
+      if ((updatedFieldData.sectionIds || []).includes(newHomeSectionId)) {
+        return res.status(400).json({ error: 'Matična sekcija ne može biti i pridružena sekcija.' });
+      }
+
+      if (replacingRejectedCertificate) {
+        certFilename = await saveCertificateBuffer(
+          updatedFieldData.firstName,
+          updatedFieldData.lastName,
+          req.file.buffer
+        );
+        updatedFieldData.certificatePath = certFilename;
+        updatedFieldStatus.certificatePath = 'PENDING';
+      }
 
       const updated = await prisma.pendingMember.update({
         where: { id: pending.id },
@@ -356,6 +421,10 @@ router.patch('/me', authenticateToken, (req, res) => {
         },
         include: { homeSection: true },
       });
+
+      if (replacingRejectedCertificate && previousRejectedCertificate) {
+        deleteCertificate(previousRejectedCertificate);
+      }
 
       await logAction(prisma, 'pending_application_fields_updated', {
         details: { pendingId: pending.id, fields: Object.keys(fields) },
@@ -529,10 +598,13 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
     const allReviewed = Object.values(fieldStatus).every((s) => s !== 'PENDING');
 
     if (!allReviewed) {
-      await prisma.pendingMember.update({
-        where: { id: pendingId },
+      const saved = await prisma.pendingMember.updateMany({
+        where: { id: pendingId, status: 'PENDING', updatedAt: pending.updatedAt },
         data: { fieldStatus },
       });
+      if (saved.count !== 1) {
+        return res.status(409).json({ error: 'Prijavu je u međuvremenu pregledao drugi korisnik. Osvježite prikaz.' });
+      }
 
       await logAction(prisma, 'pending_application_review_partial', {
         userId: memberId,
@@ -549,13 +621,17 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
 
     if (!hasRejected) {
       const data = fieldData;
-      const member = await prisma.member.create({
+      const member = await prisma.$transaction(async (tx) => {
+        const createdMember = await tx.member.create({
         data: {
           firstName: data.firstName,
           lastName: data.lastName,
           oib: data.oib,
           dateOfBirth: new Date(data.dateOfBirth),
           address: data.address,
+          houseNumber: data.houseNumber,
+          postalCode: data.postalCode,
+          city: data.city,
           gender: data.gender,
           facultyId: data.facultyId || null,
           facultyOther: data.facultyOther || null,
@@ -564,8 +640,8 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
           privateEmailVerified: !data.ksetEmail,
           ksetEmail: data.ksetEmail,
           ksetEmailVerified: Boolean(data.ksetEmail),
-          memberSince: new Date(data.memberSince),
-          cardNumber: data.cardNumber,
+          memberSince: new Date(),
+          cardNumber: data.cardNumber || null,
           membershipLevel: data.membershipLevel,
           fullMemberSince: data.fullMemberSince ? new Date(data.fullMemberSince) : null,
           homeSectionId: data.homeSectionId,
@@ -590,8 +666,11 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
         },
       });
 
-      await prisma.pendingMember.delete({
-        where: { id: pendingId },
+        const removed = await tx.pendingMember.deleteMany({
+          where: { id: pendingId, status: 'PENDING', updatedAt: pending.updatedAt },
+        });
+        if (removed.count !== 1) throw new Error('Prijava je već obrađena.');
+        return createdMember;
       });
 
       await logAction(prisma, 'pending_application_approved', {
@@ -603,12 +682,12 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
     } else {
       const updatedFieldData = { ...fieldData };
       const updatedFieldStatus = { ...fieldStatus };
+      let rejectedCertificate = null;
 
       for (const [field, status] of Object.entries(fieldStatus)) {
         if (status === 'REJECTED') {
-          // Rejected certificate: delete the file from disk
           if (field === 'certificatePath' && updatedFieldData.certificatePath) {
-            deleteCertificate(updatedFieldData.certificatePath);
+            rejectedCertificate = updatedFieldData.certificatePath;
           }
           if (Array.isArray(updatedFieldData[field])) {
             updatedFieldData[field] = [];
@@ -620,13 +699,17 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
         }
       }
 
-      await prisma.pendingMember.update({
-        where: { id: pendingId },
+      const saved = await prisma.pendingMember.updateMany({
+        where: { id: pendingId, status: 'PENDING', updatedAt: pending.updatedAt },
         data: {
           fieldData: updatedFieldData,
           fieldStatus: updatedFieldStatus,
         },
       });
+      if (saved.count !== 1) {
+        return res.status(409).json({ error: 'Prijavu je u međuvremenu pregledao drugi korisnik. Osvježite prikaz.' });
+      }
+      if (rejectedCertificate) deleteCertificate(rejectedCertificate);
 
       const rejectedFields = Object.entries(fieldStatus)
         .filter(([, s]) => s === 'REJECTED')

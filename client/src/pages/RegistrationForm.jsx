@@ -6,7 +6,7 @@ import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
 import { PageContainer, Card, Alert } from '../components/ui';
 import { TextField, SelectField, MultiCheckDropdown, CheckboxField, DateField } from '../components/Field';
-import { GENDER_OPTIONS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
+import { GENDER_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
 
 const FACULTY_OTHER = 'OTHER';
 
@@ -30,15 +30,14 @@ export default function RegistrationForm({ email, onSubmitted }) {
       oib: '',
       dateOfBirth: '',
       address: '',
+      houseNumber: '',
+      postalCode: '',
+      city: '',
       gender: '',
       facultyId: '',
       facultyOther: '',
       phone: '',
       privateEmail: '',
-      memberSince: new Date().toISOString().split('T')[0],
-      cardNumber: '',
-      membershipLevel: 'PRIDRUZENO',
-      fullMemberSince: '',
       homeSectionId: '',
       sectionIds: [],
       teamIds: [],
@@ -53,11 +52,9 @@ export default function RegistrationForm({ email, onSubmitted }) {
 
   const { values, handleChange, handleBlur, showError, validateAll } = form;
 
-  const handleMembershipChange = (name, value) => {
+  const handleHomeSectionChange = (name, value) => {
     handleChange(name, value);
-    if (value !== 'PUNOPRAVNO' && values.fullMemberSince) {
-      handleChange('fullMemberSince', '');
-    }
+    handleChange('sectionIds', values.sectionIds.filter((id) => String(id) !== String(value)));
   };
 
   const facultyOptions = [
@@ -71,6 +68,7 @@ export default function RegistrationForm({ email, onSubmitted }) {
     setCertError('');
 
     const fieldsToValidate = Object.keys(memberValidators).filter((f) => {
+      if (['membershipLevel', 'memberSince', 'cardNumber', 'fullMemberSince'].includes(f)) return false;
       if (f === 'privateEmail' && !isKset) return false;
       if (f === 'facultyOther' && values.facultyId !== FACULTY_OTHER) return false;
       return true;
@@ -94,12 +92,11 @@ export default function RegistrationForm({ email, onSubmitted }) {
       fd.append('oib', values.oib);
       fd.append('dateOfBirth', values.dateOfBirth);
       fd.append('address', values.address);
+      fd.append('houseNumber', values.houseNumber);
+      fd.append('postalCode', values.postalCode);
+      fd.append('city', values.city);
       fd.append('gender', values.gender);
       fd.append('phone', values.phone);
-      fd.append('memberSince', values.memberSince);
-      fd.append('cardNumber', values.cardNumber);
-      fd.append('membershipLevel', values.membershipLevel);
-      fd.append('fullMemberSince', values.fullMemberSince || '');
       fd.append('homeSectionId', String(parseInt(values.homeSectionId)));
       fd.append('dietType', values.dietType);
       fd.append('shirtSize', values.shirtSize);
@@ -159,13 +156,20 @@ export default function RegistrationForm({ email, onSubmitted }) {
               value={values.lastName} onChange={handleChange} onBlur={handleBlur} error={showError('lastName')} />
             <TextField name="oib" label="OIB (11 znamenaka)" required maxLength={11}
               value={values.oib} onChange={handleChange} onBlur={handleBlur} error={showError('oib')} />
-            <TextField name="dateOfBirth" label="Datum rođenja" type="date" required
+            <DateField name="dateOfBirth" label="Datum rođenja" required
               value={values.dateOfBirth} onChange={handleChange} onBlur={handleBlur} error={showError('dateOfBirth')} />
           </div>
 
-          <TextField name="address" label="Adresa" required
-            value={values.address} onChange={handleChange} onBlur={handleBlur} error={showError('address')} />
-          <p className="text-xs text-content-muted -mt-3 mb-4">(Ulica, kućni broj, poštanski broj, mjesto)</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+            <TextField name="address" label="Ulica" required
+              value={values.address} onChange={handleChange} onBlur={handleBlur} error={showError('address')} />
+            <TextField name="houseNumber" label="Kućni broj" required
+              value={values.houseNumber} onChange={handleChange} onBlur={handleBlur} error={showError('houseNumber')} />
+            <TextField name="postalCode" label="Poštanski broj" required
+              value={values.postalCode} onChange={handleChange} onBlur={handleBlur} error={showError('postalCode')} />
+            <TextField name="city" label="Mjesto" required
+              value={values.city} onChange={handleChange} onBlur={handleBlur} error={showError('city')} />
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <SelectField name="gender" label="Spol" required options={GENDER_OPTIONS}
@@ -188,7 +192,11 @@ export default function RegistrationForm({ email, onSubmitted }) {
           </div>
           <div className="mt-2">
             <label className="label">Potvrda o studiranju (PDF) <span className="text-brand-orange">*</span></label>
-            <p className="text-xs text-content-muted mb-2">Preuzmi ju putem e-Građani</p>
+            <p className="text-xs text-content-muted mb-2">
+              <a href="https://issp.srce.hr/e-potvrda/student" target="_blank" rel="noopener noreferrer" className="text-brand-orange underline">
+                Preuzmite potvrdu putem e-Građani
+              </a>
+            </p>
             <div className="flex items-center gap-3">
               <label className="btn-secondary cursor-pointer">
                 Odaberi datoteku
@@ -208,31 +216,16 @@ export default function RegistrationForm({ email, onSubmitted }) {
         </Card>
 
         <Card title="Članstvo">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-            <TextField name="memberSince" label="Datum učlanjenja" type="date" required
-              value={values.memberSince} onChange={handleChange} onBlur={handleBlur} error={showError('memberSince')} />
-            <div>
-              <TextField name="cardNumber" label="Broj iskaznice" required
-                value={values.cardNumber} onChange={handleChange} onBlur={handleBlur} error={showError('cardNumber')} />
-              <p className="text-xs text-content-muted -mt-3">
-                Oblik unosa je: AA-xx, gdje je x broj. Primjer točnog unosa: BF-23
-              </p>
-            </div>
-            <SelectField name="membershipLevel" label="Razina članstva" required options={MEMBERSHIP_LEVEL_OPTIONS}
-              value={values.membershipLevel} onChange={handleMembershipChange} onBlur={handleBlur} error={showError('membershipLevel')} />
-            {values.membershipLevel === 'PUNOPRAVNO' && (
-              <DateField name="fullMemberSince" label="Datum postanka punopravnim članom"
-                value={values.fullMemberSince} onChange={handleChange} onBlur={handleBlur} error={showError('fullMemberSince')} />
-            )}
-          </div>
+          <p className="text-sm text-content-secondary">Razina članstva: Plavi</p>
 
           <SelectField name="homeSectionId" label="Matična sekcija" required
             options={lookups.sections.map((s) => ({ value: s.id, label: s.name }))}
-            value={values.homeSectionId} onChange={handleChange} onBlur={handleBlur} error={showError('homeSectionId')} />
+            value={values.homeSectionId} onChange={handleHomeSectionChange} onBlur={handleBlur} error={showError('homeSectionId')} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <MultiCheckDropdown name="sectionIds" label="Pridružene sekcije"
-              options={lookups.sections} value={values.sectionIds} onChange={handleChange} onBlur={handleBlur} error={showError('sectionIds')} />
+              options={lookups.sections.filter((section) => String(section.id) !== String(values.homeSectionId))}
+              value={values.sectionIds} onChange={handleChange} onBlur={handleBlur} error={showError('sectionIds')} />
             <MultiCheckDropdown name="teamIds" label="Timovi"
               options={lookups.teams} value={values.teamIds} onChange={handleChange} onBlur={handleBlur} error={showError('teamIds')} />
           </div>

@@ -58,7 +58,8 @@ function parseSectionSheets(buffer, lookups, existing) {
     const ws = wb.Sheets[sheetName];
     const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
     if (raw.length === 0) continue;
-    const header = raw[0].map((h) => (h || '').toString().trim());
+    const header = raw[0].map((h) => (h || '').toString().trim())
+      .map((h) => h === 'Adresa prebivališa' ? 'Adresa prebivališta' : h);
     const missingHeaders = REQUIRED_HEADERS.filter((h) => !header.includes(h));
     if (missingHeaders.length > 0) {
       throw new Error(`Nedostaju stupci u listu "${sheetName}": ${missingHeaders.join(', ')}`);
@@ -146,7 +147,7 @@ function parseSectionSheets(buffer, lookups, existing) {
     if (unresolvedSections.length > 0) errors.push(`Nepoznata pridružena sekcija: ${unresolvedSections.join(', ')}`);
 
     if (batchOibs.has(data.oib) || existing.oibs.has(data.oib)) errors.push('OIB se dupliciran (već postoji).');
-    if (batchCardNumbers.has(data.cardNumber) || existing.cardNumbers.has(data.cardNumber)) {
+    if (data.cardNumber && (batchCardNumbers.has(data.cardNumber) || existing.cardNumbers.has(data.cardNumber))) {
       errors.push('Šifra iskaznice se dupliciran (već postoji).');
     }
     for (const email of [data.privateEmail, data.ksetEmail].filter(Boolean)) {
@@ -166,7 +167,7 @@ function parseSectionSheets(buffer, lookups, existing) {
     batchOibs.add(data.oib);
     if (data.privateEmail) batchEmails.add(data.privateEmail);
     if (data.ksetEmail) batchEmails.add(data.ksetEmail);
-    batchCardNumbers.add(data.cardNumber);
+    if (data.cardNumber) batchCardNumbers.add(data.cardNumber);
 
     result.valid.push({
       personName,

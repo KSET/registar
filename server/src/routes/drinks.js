@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
+const { verifyCurrentRole } = require('../middleware/verifyRole');
 const { authorize } = require('../middleware/authorize');
 
 const router = express.Router();
@@ -17,7 +18,7 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/', authenticateToken, authorize('ADMINISTRATOR'), async (req, res) => {
+router.post('/', authenticateToken, verifyCurrentRole, authorize('ADMINISTRATOR'), async (req, res) => {
   try {
     const { name } = req.body;
     if (!name || !name.trim()) {

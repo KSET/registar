@@ -11,6 +11,13 @@ function parsePositiveIntParam(value) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+function isValidDateOnly(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 // Validates a body field is an array of at most MAX_RELATION_IDS entries,
 // each a positive integer. Returns { ok: true, ids } or { ok: false, error }.
 function validateIdArray(value, label) {
@@ -37,6 +44,9 @@ const FIELD_MAX_LENGTHS = {
   firstName: 100,
   lastName: 100,
   address: 300,
+  houseNumber: 30,
+  postalCode: 20,
+  city: 100,
   phone: 30,
   cardNumber: 50,
   shirtSize: 10,
@@ -53,4 +63,4 @@ function checkFieldLength(field, value) {
   return value.length > max ? `Polje "${field}" je predugo (najviše ${max} znakova).` : null;
 }
 
-module.exports = { MAX_RELATION_IDS, FIELD_MAX_LENGTHS, parsePositiveIntParam, validateIdArray, checkFieldLength };
+module.exports = { MAX_RELATION_IDS, FIELD_MAX_LENGTHS, parsePositiveIntParam, isValidDateOnly, validateIdArray, checkFieldLength };

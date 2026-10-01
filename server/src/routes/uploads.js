@@ -7,7 +7,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { verifyCurrentRole } = require('../middleware/verifyRole');
 const { logAction, logError } = require('../utils/auditLog');
 const { parsePositiveIntParam } = require('../utils/requestValidation');
-const { isPdfBuffer } = require('../utils/fileValidation');
+const { isPdfBuffer, normalizePdfBuffer } = require('../utils/fileValidation');
 
 const router = express.Router();
 
@@ -86,6 +86,7 @@ router.post('/certificate', authenticateToken, (req, res) => {
   upload.single('certificate')(req, res, async (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'Datoteka nije priložena.' });
+    req.file.buffer = normalizePdfBuffer(req.file.buffer);
     if (!isPdfBuffer(req.file.buffer)) {
       return res.status(400).json({ error: 'Datoteka nije valjan PDF.' });
     }
@@ -97,7 +98,11 @@ router.post('/certificate', authenticateToken, (req, res) => {
         select: { firstName: true, lastName: true, certificateValidUntil: true },
       });
 
-      if (member?.certificateValidUntil && new Date(member.certificateValidUntil) >= new Date()) {
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      const certificateValidUntil = member?.certificateValidUntil ? new Date(member.certificateValidUntil) : null;
+      certificateValidUntil?.setUTCHours(0, 0, 0, 0);
+      if (certificateValidUntil && certificateValidUntil >= today) {
         return res.status(400).json({ error: 'Postojeća potvrda je još valjana i ne može se mijenjati.' });
       }
 

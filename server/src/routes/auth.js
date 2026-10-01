@@ -1,12 +1,14 @@
 const express = require('express');
 const passport = require('passport');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const config = require('../config');
 const { authenticateToken } = require('../middleware/auth');
 const prisma = require('../lib/prisma');
 const { logAction, logError } = require('../utils/auditLog');
 const { isKsetEmail } = require('../utils/email');
 const { createLinkNonce, consumeLinkNonce } = require('../utils/linkNonce');
+const { createLoginTicket, consumeLoginTicket } = require('../utils/oauthLoginTicket');
 
 const router = express.Router();
 const JWT_ALGORITHM = 'HS256';
@@ -23,20 +25,51 @@ function findMemberByVerifiedEmail(email) {
   });
 }
 
-// Google OAuth login - redirect to Google
-router.get(
-  '/google',
+const LOGIN_STATE_COOKIE = 'oauth_login_state';
+const LOGIN_STATE_TTL_MS = 10 * 60 * 1000;
+
+function verifyLoginOAuthState(req, res, next) {
+  const state = typeof req.query.state === 'string' ? req.query.state : '';
+  if (/^link:[0-9a-f]{48}$/.test(state)) {
+    res.clearCookie(LOGIN_STATE_COOKIE, { path: '/api/auth/google/callback' });
+    return next();
+  }
+
+  const match = /^login:([0-9a-f]{48})$/.exec(state);
+  const cookie = (req.headers.cookie || '').split(';').map((part) => part.trim())
+    .find((part) => part.startsWith(`${LOGIN_STATE_COOKIE}=`))?.slice(LOGIN_STATE_COOKIE.length + 1);
+  res.clearCookie(LOGIN_STATE_COOKIE, { path: '/api/auth/google/callback' });
+
+  if (!match || !cookie || cookie !== match[1]) {
+    return res.redirect(`${config.clientUrl}/login?error=invalid_state`);
+  }
+  next();
+}
+
+// Bind OAuth state to an HttpOnly cookie in this browser to prevent login CSRF.
+router.get('/google', (req, res, next) => {
+  const state = `login:${crypto.randomBytes(24).toString('hex')}`;
+  res.cookie(LOGIN_STATE_COOKIE, state.slice('login:'.length), {
+    httpOnly: true,
+    secure: config.isProduction,
+    sameSite: 'lax',
+    maxAge: LOGIN_STATE_TTL_MS,
+    path: '/api/auth/google/callback',
+  });
+
   passport.authenticate('google', {
     scope: ['profile', 'email'],
     session: false,
     prompt: 'select_account',
-  })
-);
+    state,
+  })(req, res, next);
+});
 
 // Shared by normal login and the /google/link flow below - Google always
 // redirects here, so the two are told apart via `state`, not the route.
 router.get(
   '/google/callback',
+  verifyLoginOAuthState,
   passport.authenticate('google', {
     session: false,
     failureRedirect: `${config.clientUrl}/login?error=auth_failed`,
@@ -95,14 +128,22 @@ router.get(
         algorithm: JWT_ALGORITHM,
       });
 
-      // Redirect to frontend with token
-      res.redirect(`${config.clientUrl}/auth/callback?token=${token}`);
+      res.set('Cache-Control', 'no-store');
+      const ticket = createLoginTicket(token);
+      res.redirect(`${config.clientUrl}/auth/callback#login_code=${ticket}`);
     } catch (err) {
       console.error('OAuth callback error:', err);
       res.redirect(`${config.clientUrl}/login?error=server_error`);
     }
   }
 );
+
+router.post('/exchange', (req, res) => {
+  const token = consumeLoginTicket(req.body?.code);
+  if (!token) return res.status(400).json({ error: 'Kod prijave je nevažeći ili je istekao.' });
+  res.set('Cache-Control', 'no-store');
+  res.json({ token });
+});
 
 async function handleEmailLinkCallback(req, res, memberId) {
   try {

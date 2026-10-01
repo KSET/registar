@@ -6,7 +6,7 @@ const { isValidOib } = require('./oib');
 
 const REQUIRED_HEADERS = [
   'Ime i prezime', 'OIB', 'Datum rođenja', 'Datum učlanjenja',
-  'Trenutna vrsta članstva', 'Fakultet', 'Adresa prebivališta', 'Aktivan član',
+  'Trenutna vrsta članstva', 'Fakultet', 'Adresa prebivališta', 'Poštanski broj', 'Aktivan član',
   'Kontakt broj mobitela', 'Privatna e-pošta', 'KSET e-pošta', 'Matična sekcija',
   'Veličina majice', 'Šifra iskaznice', 'Spol',
   'Jeste li pridruženi nekom timu?', 'Koju vrste prehrane konzumirate?',
@@ -30,11 +30,26 @@ const SECTION_ABBR = {
   Video: 'Video',
 };
 
-// Card colour -> membership level, per the club's own convention (confirmed
-// with the admin): narančasti (orange) = PUNOPRAVNO, plavi (blue) = PRIDRUZENO.
+// Membership labels used by current and older workbook exports.
 const MEMBERSHIP_LEVEL_MAP = {
-  Plava: 'PRIDRUZENO',
-  Narančasta: 'PUNOPRAVNO',
+  plava: 'PRIDRUZENO',
+  plavi: 'PRIDRUZENO',
+  pridruženo: 'PRIDRUZENO',
+  pridruzeno: 'PRIDRUZENO',
+  narančasta: 'PUNOPRAVNO',
+  narančasti: 'PUNOPRAVNO',
+  narancasta: 'PUNOPRAVNO',
+  narancasti: 'PUNOPRAVNO',
+  punopravno: 'PUNOPRAVNO',
+  punopravni: 'PUNOPRAVNO',
+  crvena: 'POCASNO',
+  crveni: 'POCASNO',
+  crveno: 'POCASNO',
+  počasni: 'POCASNO',
+  počasno: 'POCASNO',
+  pocasni: 'POCASNO',
+  pocasno: 'POCASNO',
+  staro: 'STARO',
 };
 
 const GENDER_MAP = { M: 'M', Ž: 'Z' };
@@ -89,8 +104,11 @@ function toDateOnlyString(value) {
 function parseShirtSize(raw) {
   const v = (raw || '').trim();
   if (!v) return null;
-  const size = v.replace(/^[mž]/i, '').toUpperCase();
-  return ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'].includes(size) ? size : null;
+  const normalized = v.toUpperCase();
+  const allowedSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+  if (allowedSizes.includes(normalized)) return normalized;
+  const size = normalized.replace(/^[MŽ]\s*/, '').trim();
+  return allowedSizes.includes(size) ? size : null;
 }
 
 function parseTeams(raw) {
@@ -140,7 +158,8 @@ function parseMemberRow(row, { sectionByName, teamByName, drinkByName, facultyBy
 
   const fullMemberSince = toDateOnlyString(row['Datum postanka narančastim']);
 
-  const membershipLevel = MEMBERSHIP_LEVEL_MAP[(row['Trenutna vrsta članstva'] || '').toString().trim()];
+  const membershipRaw = (row['Trenutna vrsta članstva'] || '').toString().trim().toLocaleLowerCase('hr');
+  const membershipLevel = MEMBERSHIP_LEVEL_MAP[membershipRaw];
   if (!membershipLevel) errors.push(`Nepoznata vrsta članstva: "${row['Trenutna vrsta članstva']}".`);
 
   const gender = GENDER_MAP[(row['Spol'] || '').toString().trim()];
@@ -151,10 +170,18 @@ function parseMemberRow(row, { sectionByName, teamByName, drinkByName, facultyBy
   const facultyOther = facultyId ? null : facultyRaw || null;
   if (!facultyId && !facultyOther) errors.push('Fakultet nedostaje.');
 
-  const address = (row['Adresa prebivališta'] || '').toString().trim();
-  const postal = (row['Poštanski broj'] || '').toString().trim();
-  const fullAddress = postal ? `${address}, ${postal}` : address;
-  if (!address) errors.push('Adresa nedostaje.');
+  const rawAddress = (row['Adresa prebivališta'] || '').toString().trim();
+  const postalCode = (row['Poštanski broj'] || '').toString().trim();
+  const [streetAndNumber = '', ...cityParts] = rawAddress.split(',').map((part) => part.trim());
+  const city = cityParts.join(', ');
+  const addressMatch = /^(.*?)\s+((?:\d+\s*[A-Za-z]?(?:\s*[/-]\s*\d+\s*[A-Za-z]?)?)|bb|b\.b\.|bez broja)$/i.exec(streetAndNumber);
+  const address = addressMatch?.[1]?.trim() || '';
+  const houseNumber = addressMatch?.[2]?.replace(/\s*([/-])\s*/g, '$1').replace(/\s+/g, ' ').trim() || '';
+  if (!rawAddress) errors.push('Adresa prebivališta nedostaje.');
+  else if (!addressMatch || !city) {
+    errors.push('Adresa mora biti u obliku "Ulica kućni broj, Mjesto".');
+  }
+  if (!postalCode) errors.push('Poštanski broj nedostaje.');
 
   const phone = (row['Kontakt broj mobitela'] || '').toString().trim();
   if (!phone) errors.push('Broj mobitela nedostaje.');
@@ -172,8 +199,7 @@ function parseMemberRow(row, { sectionByName, teamByName, drinkByName, facultyBy
   const shirtSize = parseShirtSize(row['Veličina majice']);
   if (!shirtSize) errors.push(`Nepoznata veličina majice: "${row['Veličina majice']}".`);
 
-  const cardNumber = (row['Šifra iskaznice'] || '').toString().trim();
-  if (!cardNumber) errors.push('Šifra iskaznice nedostaje.');
+  const cardNumber = (row['Šifra iskaznice'] || '').toString().trim() || null;
 
   const dietType = DIET_MAP[(row['Koju vrste prehrane konzumirate?'] || '').toString().trim()];
   if (!dietType) errors.push(`Nepoznat tip prehrane: "${row['Koju vrste prehrane konzumirate?']}".`);
@@ -199,7 +225,10 @@ function parseMemberRow(row, { sectionByName, teamByName, drinkByName, facultyBy
       lastName,
       oib,
       dateOfBirth,
-      address: fullAddress,
+      address,
+      houseNumber,
+      postalCode,
+      city,
       gender,
       facultyId,
       facultyOther,

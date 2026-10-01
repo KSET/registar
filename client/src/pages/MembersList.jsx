@@ -4,10 +4,12 @@ import { useLookupData } from '../useLookupData';
 import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
 import { MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, GENDER_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
+import { formatDate } from '../date';
+import { formatAddress } from '../address';
 import { PageContainer, Card, Alert, ConfirmDialog, ErrorPopup } from '../components/ui';
 import { TextField, SelectField, MultiCheckDropdown, DateField } from '../components/Field';
+import MembershipLabel from '../components/MembershipLabel';
 
-const MEMBERSHIP_LABELS = Object.fromEntries(MEMBERSHIP_LEVEL_OPTIONS.map((o) => [o.value, o.label]));
 const DIET_LABELS = Object.fromEntries(DIET_TYPE_OPTIONS.map((o) => [o.value, o.label]));
 const GENDER_LABELS = Object.fromEntries(GENDER_OPTIONS.map((o) => [o.value, o.label]));
 const ROLE_LABELS = {
@@ -17,11 +19,6 @@ const ROLE_LABELS = {
 };
 const FACULTY_OTHER = 'OTHER';
 
-function formatDate(d) {
-  if (!d) return '-';
-  return new Date(d).toLocaleDateString('hr');
-}
-
 function toDateInput(d) {
   return d ? d.split('T')[0] : '';
 }
@@ -30,7 +27,7 @@ function facultyDisplay(m) {
   return m.faculty?.name || m.facultyOther || '-';
 }
 
-export default function MembersList({ isAdmin }) {
+export default function MembersList({ isAdmin, canManageMembership }) {
   const lookups = useLookupData();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -103,6 +100,7 @@ export default function MembersList({ isAdmin }) {
       <MemberDetail
         member={detail}
         isAdmin={isAdmin}
+        canManageMembership={canManageMembership}
         lookups={lookups}
         onBack={() => { setSelectedId(null); }}
         onRoleChanged={() => { setSelectedId(null); load(); }}
@@ -214,7 +212,60 @@ function InfoRow({ label, value, children }) {
   );
 }
 
-function MemberDetail({ member, isAdmin, lookups, onBack, onRoleChanged, onUpdated, onDeleted, setMessage }) {
+function MembershipManager({ member, onSaved }) {
+  const [membershipLevel, setMembershipLevel] = useState(member.membershipLevel);
+  const [cardNumber, setCardNumber] = useState(member.cardNumber || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/members/${member.id}/management`, {
+        method: 'PATCH',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ membershipLevel, cardNumber }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Greška pri spremanju.');
+        return;
+      }
+      onSaved(data);
+    } catch (err) {
+      setError('Mrežna greška.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card title="Upravljanje članstvom">
+      <form onSubmit={handleSubmit}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+          <div className="mb-4">
+            <label className="label" htmlFor="managed-membership-level">Razina članstva</label>
+            <select id="managed-membership-level" className="input" value={membershipLevel} onChange={(event) => setMembershipLevel(event.target.value)}>
+              {MEMBERSHIP_LEVEL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </div>
+          <div className="mb-4">
+            <label className="label" htmlFor="managed-card-number">Broj iskaznice</label>
+            <input id="managed-card-number" className="input" value={cardNumber} onChange={(event) => setCardNumber(event.target.value)} />
+          </div>
+        </div>
+        {error && <Alert kind="error">{error}</Alert>}
+        <button type="submit" className="btn-primary" disabled={saving}>
+          {saving ? 'Spremam...' : 'Spremi'}
+        </button>
+      </form>
+    </Card>
+  );
+}
+
+function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, onRoleChanged, onUpdated, onDeleted, setMessage }) {
   const [role, setRole] = useState(member.appRole || 'CLAN');
   const [managedSectionId, setManagedSectionId] = useState(member.managedSectionId ? String(member.managedSectionId) : '');
   const [error, setError] = useState('');
@@ -317,7 +368,7 @@ function MemberDetail({ member, isAdmin, lookups, onBack, onRoleChanged, onUpdat
             <InfoRow label="OIB" value={member.oib} />
             <InfoRow label="Datum rođenja" value={formatDate(member.dateOfBirth)} />
             <InfoRow label="Spol" value={GENDER_LABELS[member.gender] || member.gender} />
-            <InfoRow label="Adresa" value={member.address} />
+            <InfoRow label="Adresa" value={formatAddress(member)} />
             <InfoRow label="Fakultet" value={facultyDisplay(member)} />
             <InfoRow label="Telefon" value={member.phone} />
             <InfoRow label="Privatni e-mail" value={member.privateEmail} />
@@ -326,8 +377,8 @@ function MemberDetail({ member, isAdmin, lookups, onBack, onRoleChanged, onUpdat
 
           <Card title="Članstvo">
             <InfoRow label="Datum učlanjenja" value={formatDate(member.memberSince)} />
-            <InfoRow label="Broj iskaznice" value={member.cardNumber} />
-            <InfoRow label="Razina članstva" value={MEMBERSHIP_LABELS[member.membershipLevel]} />
+            <InfoRow label="Broj iskaznice" value={member.cardNumber || '-'} />
+            <InfoRow label="Razina članstva"><MembershipLabel value={member.membershipLevel} /></InfoRow>
             {member.fullMemberSince && <InfoRow label="Punopravni od" value={formatDate(member.fullMemberSince)} />}
             <InfoRow label="Matična sekcija" value={member.homeSection?.name} />
             <InfoRow label="Pridružene sekcije" value={member.sections?.map((s) => s.section.name).join(', ') || '-'} />
@@ -357,6 +408,16 @@ function MemberDetail({ member, isAdmin, lookups, onBack, onRoleChanged, onUpdat
             <InfoRow label="Veličina majice" value={member.shirtSize} />
           </Card>
         </>
+      )}
+
+      {canManageMembership && !isLimited && !editing && (
+        <MembershipManager
+          member={member}
+          onSaved={(changes) => {
+            onUpdated({ ...member, ...changes });
+            setMessage('Podatci o članstvu su spremljeni.');
+          }}
+        />
       )}
 
       {isAdmin && !isLimited && !editing && (
@@ -443,19 +504,21 @@ function MemberEditForm({ member, lookups, submitting, setSubmitting, setError, 
       oib: member.oib,
       dateOfBirth: toDateInput(member.dateOfBirth),
       address: member.address,
+      houseNumber: member.houseNumber || '',
+      postalCode: member.postalCode || '',
+      city: member.city || '',
       gender: member.gender,
       facultyId: initialFacultyId,
       facultyOther: member.facultyOther || '',
       phone: member.phone,
       privateEmail: member.privateEmail,
-      memberSince: toDateInput(member.memberSince),
-      cardNumber: member.cardNumber,
+      cardNumber: member.cardNumber || '',
       membershipLevel: member.membershipLevel,
       fullMemberSince: member.fullMemberSince ? member.fullMemberSince.split('T')[0] : '',
       dietType: member.dietType,
       shirtSize: member.shirtSize,
       homeSectionId: member.homeSectionId ? String(member.homeSectionId) : '',
-      sectionIds: member.sections.map((s) => s.section.id),
+      sectionIds: member.sections.map((s) => s.section.id).filter((id) => String(id) !== String(member.homeSectionId)),
       teamIds: member.teams.map((t) => t.team.id),
       drinkIds: member.drinks.map((d) => d.drink.id),
       allergyIds: member.allergies.map((a) => a.allergy.id),
@@ -464,6 +527,11 @@ function MemberEditForm({ member, lookups, submitting, setSubmitting, setError, 
   );
 
   const { values, handleChange, handleBlur, showError } = form;
+
+  const handleHomeSectionChange = (name, value) => {
+    handleChange(name, value);
+    handleChange('sectionIds', values.sectionIds.filter((id) => String(id) !== String(value)));
+  };
 
   const facultyOptions = [
     ...lookups.faculties.map((f) => ({ value: String(f.id), label: f.name })),
@@ -488,6 +556,7 @@ function MemberEditForm({ member, lookups, submitting, setSubmitting, setError, 
       const payload = { ...values };
       payload.facultyId = values.facultyId && values.facultyId !== FACULTY_OTHER ? parseInt(values.facultyId) : null;
       payload.facultyOther = values.facultyId === FACULTY_OTHER ? values.facultyOther : null;
+      payload.cardNumber = values.cardNumber.trim() || null;
 
       const res = await fetch(`/api/members/${member.id}`, {
         method: 'PATCH',
@@ -517,13 +586,20 @@ function MemberEditForm({ member, lookups, submitting, setSubmitting, setError, 
             value={values.lastName} onChange={handleChange} onBlur={handleBlur} error={showError('lastName')} />
           <TextField name="oib" label="OIB" required maxLength={11}
             value={values.oib} onChange={handleChange} onBlur={handleBlur} error={showError('oib')} />
-          <TextField name="dateOfBirth" label="Datum rođenja" type="date" required
+          <DateField name="dateOfBirth" label="Datum rođenja" required
             value={values.dateOfBirth} onChange={handleChange} onBlur={handleBlur} error={showError('dateOfBirth')} />
         </div>
 
-        <TextField name="address" label="Adresa" required
+        <TextField name="address" label="Ulica" required
           value={values.address} onChange={handleChange} onBlur={handleBlur} error={showError('address')} />
-        <p className="text-xs text-content-muted -mt-3 mb-4">(Ulica, kućni broj, poštanski broj, mjesto)</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+          <TextField name="houseNumber" label="Kućni broj" required
+            value={values.houseNumber} onChange={handleChange} onBlur={handleBlur} error={showError('houseNumber')} />
+          <TextField name="postalCode" label="Poštanski broj" required
+            value={values.postalCode} onChange={handleChange} onBlur={handleBlur} error={showError('postalCode')} />
+          <TextField name="city" label="Mjesto" required
+            value={values.city} onChange={handleChange} onBlur={handleBlur} error={showError('city')} />
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
           <SelectField name="gender" label="Spol" required options={GENDER_OPTIONS}
@@ -546,9 +622,7 @@ function MemberEditForm({ member, lookups, submitting, setSubmitting, setError, 
 
       <Card title="Članstvo">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-          <TextField name="memberSince" label="Datum učlanjenja" type="date" required
-            value={values.memberSince} onChange={handleChange} onBlur={handleBlur} error={showError('memberSince')} />
-          <TextField name="cardNumber" label="Broj iskaznice" required
+          <TextField name="cardNumber" label="Broj iskaznice"
             value={values.cardNumber} onChange={handleChange} onBlur={handleBlur} error={showError('cardNumber')} />
           <SelectField name="membershipLevel" label="Razina članstva" required options={MEMBERSHIP_LEVEL_OPTIONS}
             value={values.membershipLevel} onChange={handleChange} onBlur={handleBlur} error={showError('membershipLevel')} />
@@ -556,12 +630,13 @@ function MemberEditForm({ member, lookups, submitting, setSubmitting, setError, 
             value={values.fullMemberSince} onChange={handleChange} onBlur={handleBlur} error={showError('fullMemberSince')} />
           <SelectField name="homeSectionId" label="Matična sekcija" required
             options={lookups.sections.map((s) => ({ value: String(s.id), label: s.name }))}
-            value={values.homeSectionId} onChange={handleChange} onBlur={handleBlur} error={showError('homeSectionId')} />
+            value={values.homeSectionId} onChange={handleHomeSectionChange} onBlur={handleBlur} error={showError('homeSectionId')} />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
           <MultiCheckDropdown name="sectionIds" label="Pridružene sekcije"
-            options={lookups.sections} value={values.sectionIds} onChange={handleChange} onBlur={handleBlur} error={showError('sectionIds')} />
+            options={lookups.sections.filter((section) => String(section.id) !== String(values.homeSectionId))}
+            value={values.sectionIds} onChange={handleChange} onBlur={handleBlur} error={showError('sectionIds')} />
           <MultiCheckDropdown name="teamIds" label="Timovi"
             options={lookups.teams} value={values.teamIds} onChange={handleChange} onBlur={handleBlur} error={showError('teamIds')} />
         </div>

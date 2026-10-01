@@ -8,6 +8,9 @@ export const FIELD_ORDER = [
   'oib',
   'dateOfBirth',
   'address',
+  'houseNumber',
+  'postalCode',
+  'city',
   'gender',
   'phone',
   'privateEmail',
@@ -41,7 +44,10 @@ export const FIELD_LABELS = {
   lastName: 'Prezime',
   oib: 'OIB',
   dateOfBirth: 'Datum rođenja',
-  address: 'Adresa',
+  address: 'Ulica',
+  houseNumber: 'Kućni broj',
+  postalCode: 'Poštanski broj',
+  city: 'Mjesto',
   gender: 'Spol',
   faculty: 'Fakultet',
   certificatePath: 'Potvrda o studiranju',
@@ -69,9 +75,9 @@ export const GENDER_OPTIONS = [
 ];
 
 export const MEMBERSHIP_LEVEL_OPTIONS = [
-  { value: 'PRIDRUZENO', label: 'Pridruženo' },
-  { value: 'PUNOPRAVNO', label: 'Punopravno' },
-  { value: 'POCASNO', label: 'Počasno' },
+  { value: 'PRIDRUZENO', label: 'Plavi' },
+  { value: 'PUNOPRAVNO', label: 'Narančasti' },
+  { value: 'POCASNO', label: 'Crveni' },
   { value: 'STARO', label: 'Staro' },
 ];
 

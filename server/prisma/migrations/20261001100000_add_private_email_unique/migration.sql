@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "Member_privateEmail_key" ON "Member"("privateEmail");

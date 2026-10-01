@@ -1,4 +1,6 @@
 import { FIELD_LABELS, fieldOrderIndex } from '../constants';
+import { formatDate } from '../date';
+import MembershipLabel from '../components/MembershipLabel';
 import { PageContainer, Card, Alert } from '../components/ui';
 import PendingRefillForm from './PendingRefillForm';
 
@@ -8,6 +10,7 @@ function truncate(s, n = 30) {
 }
 
 function displayValue(key, value) {
+  if (['dateOfBirth', 'memberSince', 'fullMemberSince'].includes(key)) return formatDate(value);
   if (key === 'certificatePath') return truncate(String(value ?? ''), 30) || '-';
   if (Array.isArray(value)) return value.join(', ') || '-';
   if (typeof value === 'boolean') return value ? 'Da' : 'Ne';
@@ -29,7 +32,7 @@ export default function PendingView({ pending, onUpdated }) {
   const status = pending.fieldStatus;
 
   const fieldsToRefill = Object.entries(status)
-    .filter(([, s]) => s === 'REJECTED')
+    .filter(([key, s]) => s === 'REJECTED' && !['membershipLevel', 'cardNumber', 'memberSince'].includes(key))
     .map(([key]) => key);
 
   if (fieldsToRefill.length > 0) {
@@ -59,7 +62,7 @@ export default function PendingView({ pending, onUpdated }) {
                 .map(([key, value]) => (
                 <tr key={key}>
                   <td className="text-content-secondary">{FIELD_LABELS[key] || key}</td>
-                  <td>{displayValue(key, value)}</td>
+                  <td>{key === 'membershipLevel' ? <MembershipLabel value={value} /> : displayValue(key, value)}</td>
                   <td><StatusBadge status={status[key] || 'PENDING'} /></td>
                 </tr>
               ))}

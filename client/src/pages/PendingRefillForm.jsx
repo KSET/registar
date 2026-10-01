@@ -18,7 +18,7 @@ function truncate(s, n = 20) {
   return s.length > n ? s.slice(0, n) + '...' : s;
 }
 
-function RefillField({ fieldKey, form, lookups }) {
+function RefillField({ fieldKey, form, lookups, homeSectionId }) {
   const { values, handleChange, handleBlur, showError } = form;
   const common = {
     name: fieldKey,
@@ -42,7 +42,11 @@ function RefillField({ fieldKey, form, lookups }) {
       return <SelectField {...common} label={label} required
         options={lookups.sections.map((s) => ({ value: s.id, label: s.name }))} />;
     case 'sectionIds':
-      return <MultiCheckDropdown {...common} label={label} options={lookups.sections} />;
+      return <MultiCheckDropdown
+        {...common}
+        label={label}
+        options={lookups.sections.filter((section) => String(section.id) !== String(homeSectionId))}
+      />;
     case 'teamIds':
       return <MultiCheckDropdown {...common} label={label} options={lookups.teams} />;
     case 'drinkIds':
@@ -53,14 +57,9 @@ function RefillField({ fieldKey, form, lookups }) {
       return <CheckboxField {...common} label="Prihvaćam akte i dokumente udruge" />;
     case 'dateOfBirth':
     case 'memberSince':
-      return <TextField {...common} label={label} type="date" required />;
+      return <DateField {...common} label={label} required />;
     case 'address':
-      return (
-        <>
-          <TextField {...common} label={label} required />
-          <p className="text-xs text-content-muted -mt-3 mb-4">(Ulica, kućni broj, poštanski broj, mjesto)</p>
-        </>
-      );
+      return <TextField {...common} label={label} required />;
     case 'fullMemberSince':
       return <DateField {...common} label={label} />;
     case 'privateEmail':
@@ -170,12 +169,22 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
       <Card title="Polja za popuniti">
         <form onSubmit={handleSubmit}>
           {fieldsToRefill.map((key) => (
-            <RefillField key={key} fieldKey={key} form={form} lookups={lookups} />
+            <RefillField
+              key={key}
+              fieldKey={key}
+              form={form}
+              lookups={lookups}
+              homeSectionId={values.homeSectionId || pending.homeSectionId}
+            />
           ))}
           {needsCertificate && (
             <div className="mb-4">
               <label className="label">Potvrda o studiranju (PDF) <span className="text-brand-orange">*</span></label>
-              <p className="text-xs text-content-muted mb-2">Preuzmi ju putem e-Građani</p>
+              <p className="text-xs text-content-muted mb-2">
+                <a href="https://issp.srce.hr/e-potvrda/student" target="_blank" rel="noopener noreferrer" className="text-brand-orange underline">
+                  Preuzmite potvrdu putem e-Građani
+                </a>
+              </p>
               <div className="flex items-center gap-3">
                 <label className="btn-secondary cursor-pointer">
                   Odaberi datoteku

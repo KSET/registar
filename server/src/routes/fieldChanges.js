@@ -111,13 +111,12 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
 
     if (decision === 'APPROVED') {
       const updateData = {};
+      let supersededCertificate = null;
 
       if (change.fieldName === 'membershipLevel') {
         updateData.membershipLevel = change.newValue;
       } else if (change.fieldName === 'certificatePath') {
-        if (DELETE_SUPERSEDED_CERTIFICATE && change.member.certificatePath) {
-          deleteCertificate(change.member.certificatePath);
-        }
+        supersededCertificate = change.member.certificatePath;
         updateData.certificatePath = change.newValue;
         const now = new Date();
         let year = now.getFullYear();
@@ -128,15 +127,21 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
         return res.status(400).json({ error: `Nepodržano polje: ${change.fieldName}` });
       }
 
-      await prisma.member.update({
-        where: { id: change.memberId },
-        data: updateData,
+      await prisma.$transaction(async (tx) => {
+        const result = await tx.pendingFieldChange.updateMany({
+          where: { id: changeId, status: 'PENDING' },
+          data: { status: 'APPROVED', reviewedBy: memberId },
+        });
+        if (result.count !== 1) throw new Error('Ovaj zahtjev je već obrađen.');
+        await tx.member.update({
+          where: { id: change.memberId },
+          data: updateData,
+        });
       });
 
-      await prisma.pendingFieldChange.update({
-        where: { id: changeId },
-        data: { status: 'APPROVED', reviewedBy: memberId },
-      });
+      if (DELETE_SUPERSEDED_CERTIFICATE && supersededCertificate) {
+        deleteCertificate(supersededCertificate);
+      }
 
       await logAction(prisma, 'field_change_reviewed', {
         userId: memberId,
@@ -145,13 +150,12 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
 
       return res.json({ message: 'Promjena je odobrena.' });
     } else {
-      if (change.fieldName === 'certificatePath' && change.newValue) {
-        deleteCertificate(change.newValue);
-      }
-      await prisma.pendingFieldChange.update({
-        where: { id: changeId },
+      const result = await prisma.pendingFieldChange.updateMany({
+        where: { id: changeId, status: 'PENDING' },
         data: { status: 'REJECTED', reviewedBy: memberId },
       });
+      if (result.count !== 1) return res.status(400).json({ error: 'Ovaj zahtjev je već obrađen.' });
+      if (change.fieldName === 'certificatePath' && change.newValue) deleteCertificate(change.newValue);
 
       await logAction(prisma, 'field_change_reviewed', {
         userId: memberId,

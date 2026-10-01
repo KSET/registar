@@ -10,7 +10,6 @@ const { deleteCertificate } = require('./uploads');
 const router = express.Router();
 
 const LOCKED_FIELDS = ['oib', 'dateOfBirth', 'cardNumber', 'memberSince'];
-const APPROVAL_FIELDS = ['membershipLevel'];
 const CERTIFICATE_FIELDS = ['certificatePath', 'certificateValidUntil'];
 const MAX_LEADERS_PER_SECTION = 2;
 
@@ -18,6 +17,9 @@ const EDITABLE_SCALAR_FIELDS = [
   'firstName',
   'lastName',
   'address',
+  'houseNumber',
+  'postalCode',
+  'city',
   'gender',
   'phone',
   'privateEmail',
@@ -26,15 +28,13 @@ const EDITABLE_SCALAR_FIELDS = [
   'shirtSize',
 ];
 
-// Admins can edit everything a member can, plus the fields normally locked
-// for self-service (oib/dateOfBirth/cardNumber/memberSince) and the
-// membership level directly (no pending-approval detour - the admin IS the
-// approver). Certificate fields still go through the dedicated upload flow.
+// Admins can edit everything a member can, plus identity/card fields and
+// membership level. The joining date is historical/statistical and remains
+// server-managed; certificate fields use the dedicated upload flow.
 const ADMIN_EDITABLE_SCALAR_FIELDS = [
   ...EDITABLE_SCALAR_FIELDS,
   'oib',
   'dateOfBirth',
-  'memberSince',
   'cardNumber',
   'membershipLevel',
 ];
@@ -97,44 +97,8 @@ router.patch('/me', authenticateToken, async (req, res) => {
       }
     }
 
-    let membershipChangeResult = null;
     if ('membershipLevel' in body) {
-      const newLevel = body.membershipLevel;
-
-      if (!['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(newLevel)) {
-        return res.status(400).json({ error: 'Nevažeća razina članstva.' });
-      }
-
-      const member = await prisma.member.findUnique({
-        where: { id: memberId },
-        select: { membershipLevel: true },
-      });
-
-      if (newLevel !== member.membershipLevel) {
-        const existing = await prisma.pendingFieldChange.findFirst({
-          where: { memberId, fieldName: 'membershipLevel', status: 'PENDING' },
-        });
-
-        if (existing) {
-          return res.status(400).json({ error: 'Već ste zatražili promjenu članstva. Čeka odobrenje voditelja.' });
-        }
-
-        await prisma.pendingFieldChange.create({
-          data: {
-            memberId,
-            fieldName: 'membershipLevel',
-            newValue: newLevel,
-            status: 'PENDING',
-          },
-        });
-
-        membershipChangeResult = 'Promjena članstva poslana voditelju na odobrenje.';
-
-        await logAction(prisma, 'membership_change_requested', {
-          userId: memberId,
-          details: { requestedLevel: newLevel, previousLevel: member.membershipLevel },
-        });
-      }
+      return res.status(400).json({ error: 'Razinu članstva može mijenjati samo administrator ili voditelj sekcije.' });
     }
 
     const data = {};
@@ -200,6 +164,13 @@ router.patch('/me', authenticateToken, async (req, res) => {
     if ('sectionIds' in body) {
       const result = validateIdArray(body.sectionIds, 'sectionIds');
       if (!result.ok) return res.status(400).json({ error: result.error });
+      if (new Set(result.ids).size !== result.ids.length) {
+        return res.status(400).json({ error: 'Pridružene sekcije sadrže duplikate.' });
+      }
+      const currentMember = await prisma.member.findUnique({ where: { id: memberId }, select: { homeSectionId: true } });
+      if (currentMember && result.ids.includes(currentMember.homeSectionId)) {
+        return res.status(400).json({ error: 'Matična sekcija ne može biti i pridružena sekcija.' });
+      }
       relationUpdates.sections = {
         deleteMany: {},
         create: result.ids.map((id) => ({ sectionId: id })),
@@ -259,10 +230,67 @@ router.patch('/me', authenticateToken, async (req, res) => {
     res.json({
       ...updated,
       pendingChanges,
-      notice: membershipChangeResult,
     });
   } catch (err) {
     await logError(prisma, 'member_profile_update', err, { userId: req.user.memberId });
+    res.status(500).json({ error: 'Greška na serveru.' });
+  }
+});
+
+router.patch('/:id/management', authenticateToken, verifyCurrentRole, async (req, res) => {
+  try {
+    const { appRole, memberId } = req.user;
+    if (!['ADMINISTRATOR', 'VODITELJ_SEKCIJE'].includes(appRole)) {
+      return res.status(403).json({ error: 'Nemate ovlasti.' });
+    }
+
+    const targetId = parsePositiveIntParam(req.params.id);
+    if (targetId === null) return res.status(400).json({ error: 'Nevažeći ID člana.' });
+
+    const target = await prisma.member.findUnique({
+      where: { id: targetId },
+      include: { sections: { select: { sectionId: true } } },
+    });
+    if (!target) return res.status(404).json({ error: 'Član nije pronađen.' });
+
+    if (appRole === 'VODITELJ_SEKCIJE') {
+      const leader = await prisma.member.findUnique({ where: { id: memberId }, select: { managedSectionId: true } });
+      const sectionId = leader?.managedSectionId;
+      const canManage = sectionId && (
+        target.homeSectionId === sectionId || target.sections.some((section) => section.sectionId === sectionId)
+      );
+      if (!canManage) return res.status(403).json({ error: 'Niste voditelj sekcije ovog člana.' });
+    }
+
+    const data = {};
+    if ('membershipLevel' in req.body) {
+      if (!['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(req.body.membershipLevel)) {
+        return res.status(400).json({ error: 'Nevažeća razina članstva.' });
+      }
+      data.membershipLevel = req.body.membershipLevel;
+    }
+    if ('cardNumber' in req.body) {
+      const cardNumber = typeof req.body.cardNumber === 'string' ? req.body.cardNumber.trim() : '';
+      const lengthError = checkFieldLength('cardNumber', cardNumber);
+      if (lengthError) return res.status(400).json({ error: lengthError });
+      if (cardNumber) {
+        const owner = await prisma.member.findFirst({ where: { cardNumber, id: { not: targetId } } });
+        if (owner) return res.status(409).json({ error: 'Ta šifra iskaznice je već u upotrebi.' });
+        data.cardNumber = cardNumber;
+      } else {
+        data.cardNumber = null;
+      }
+    }
+    if (!Object.keys(data).length) return res.status(400).json({ error: 'Nema podataka za spremanje.' });
+
+    const updated = await prisma.member.update({ where: { id: targetId }, data });
+    await logAction(prisma, 'member_management_fields_updated', {
+      userId: memberId,
+      details: { targetId, updatedFields: Object.keys(data) },
+    });
+    res.json(updated);
+  } catch (err) {
+    await logError(prisma, 'member_management_fields_update', err, { userId: req.user.memberId });
     res.status(500).json({ error: 'Greška na serveru.' });
   }
 });
@@ -524,6 +552,13 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
         }
       } else {
         const val = body[field];
+        if (field === 'cardNumber') {
+          const cardNumber = typeof val === 'string' ? val.trim() : '';
+          const lengthError = checkFieldLength(field, cardNumber);
+          if (lengthError) return res.status(400).json({ error: lengthError });
+          data[field] = cardNumber || null;
+          continue;
+        }
         if (typeof val === 'string' && !val.trim()) {
           return res.status(400).json({ error: `Polje "${field}" ne smije biti prazno.` });
         }
@@ -548,7 +583,7 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
       const oibOwner = await prisma.member.findFirst({ where: { oib: data.oib, id: { not: targetId } } });
       if (oibOwner) return res.status(400).json({ error: 'Taj OIB je već u upotrebi.' });
     }
-    if ('cardNumber' in data) {
+    if ('cardNumber' in data && data.cardNumber) {
       const cardOwner = await prisma.member.findFirst({ where: { cardNumber: data.cardNumber, id: { not: targetId } } });
       if (cardOwner) return res.status(400).json({ error: 'Ta šifra iskaznice je već u upotrebi.' });
     }
@@ -586,6 +621,13 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
     if ('sectionIds' in body) {
       const result = validateIdArray(body.sectionIds, 'sectionIds');
       if (!result.ok) return res.status(400).json({ error: result.error });
+      if (new Set(result.ids).size !== result.ids.length) {
+        return res.status(400).json({ error: 'Pridružene sekcije sadrže duplikate.' });
+      }
+      const homeSectionId = data.homeSectionId ?? target.homeSectionId;
+      if (result.ids.includes(homeSectionId)) {
+        return res.status(400).json({ error: 'Matična sekcija ne može biti i pridružena sekcija.' });
+      }
       relationUpdates.sections = { deleteMany: {}, create: result.ids.map((id) => ({ sectionId: id })) };
     }
     if ('teamIds' in body) {

@@ -1,0 +1,5 @@
+ALTER TABLE "Member"
+ADD COLUMN "houseNumber" TEXT,
+ADD COLUMN "postalCode" TEXT,
+ADD COLUMN "city" TEXT,
+ALTER COLUMN "cardNumber" DROP NOT NULL;

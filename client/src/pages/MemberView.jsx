@@ -3,16 +3,14 @@ import { jsonHeaders, getToken, authHeaders, openCertificate } from '../api/auth
 import { useLookupData } from '../useLookupData';
 import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
+import { formatDate, isDateOnOrAfterToday } from '../date';
+import { formatAddress } from '../address';
 import { PageContainer, Card, Alert } from '../components/ui';
 import { TextField, SelectField, MultiCheckDropdown, DateField } from '../components/Field';
-import { GENDER_OPTIONS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
+import MembershipLabel from '../components/MembershipLabel';
+import { GENDER_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
 
 const FACULTY_OTHER = 'OTHER';
-
-function formatDate(d) {
-  if (!d) return '-';
-  return new Date(d).toLocaleDateString('hr');
-}
 
 function linkEmailUrl() {
   return `/api/auth/google/link?token=${encodeURIComponent(getToken())}`;
@@ -23,7 +21,6 @@ function truncate(s, n = 20) {
   return s.length > n ? s.slice(0, n) + '...' : s;
 }
 
-const MEMBERSHIP_LABELS = Object.fromEntries(MEMBERSHIP_LEVEL_OPTIONS.map((o) => [o.value, o.label]));
 const DIET_LABELS = Object.fromEntries(DIET_TYPE_OPTIONS.map((o) => [o.value, o.label]));
 const GENDER_LABELS = Object.fromEntries(GENDER_OPTIONS.map((o) => [o.value, o.label]));
 
@@ -56,12 +53,8 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
     setMember(initialMember);
   }, [initialMember]);
 
-  const pendingMembership = (member.pendingChanges || []).find(
-    (c) => c.fieldName === 'membershipLevel'
-  );
-
   const pendingCert = (member.pendingChanges || []).find((c) => c.fieldName === 'certificatePath');
-  const certValid = member.certificateValidUntil && new Date(member.certificateValidUntil) >= new Date();
+  const certValid = isDateOnOrAfterToday(member.certificateValidUntil);
 
   // Determine initial faculty select value: known faculty id, or OTHER if facultyOther set
   const initialFacultyId = member.faculty?.id
@@ -75,16 +68,18 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
       firstName: member.firstName,
       lastName: member.lastName,
       address: member.address,
+      houseNumber: member.houseNumber || '',
+      postalCode: member.postalCode || '',
+      city: member.city || '',
       gender: member.gender,
       facultyId: initialFacultyId,
       facultyOther: member.facultyOther || '',
       phone: member.phone,
       privateEmail: member.privateEmail,
-      membershipLevel: member.membershipLevel,
       fullMemberSince: member.fullMemberSince ? member.fullMemberSince.split('T')[0] : '',
       dietType: member.dietType,
       shirtSize: member.shirtSize,
-      sectionIds: member.sections.map((s) => s.section.id),
+      sectionIds: member.sections.map((s) => s.section.id).filter((id) => id !== member.homeSectionId),
       teamIds: member.teams.map((t) => t.team.id),
       drinkIds: member.drinks.map((d) => d.drink.id),
       allergyIds: member.allergies.map((a) => a.allergy.id),
@@ -101,16 +96,18 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
       firstName: member.firstName,
       lastName: member.lastName,
       address: member.address,
+      houseNumber: member.houseNumber || '',
+      postalCode: member.postalCode || '',
+      city: member.city || '',
       gender: member.gender,
       facultyId: initialFacultyId,
       facultyOther: member.facultyOther || '',
       phone: member.phone,
       privateEmail: member.privateEmail,
-      membershipLevel: member.membershipLevel,
       fullMemberSince: member.fullMemberSince ? member.fullMemberSince.split('T')[0] : '',
       dietType: member.dietType,
       shirtSize: member.shirtSize,
-      sectionIds: member.sections.map((s) => s.section.id),
+      sectionIds: member.sections.map((s) => s.section.id).filter((id) => id !== member.homeSectionId),
       teamIds: member.teams.map((t) => t.team.id),
       drinkIds: member.drinks.map((d) => d.drink.id),
       allergyIds: member.allergies.map((a) => a.allergy.id),
@@ -121,13 +118,6 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
   const cancelEditing = () => {
     setEditing(false);
     setSubmitError('');
-  };
-
-  const handleMembershipChange = (name, value) => {
-    handleChange(name, value);
-    if (value !== 'PUNOPRAVNO' && values.fullMemberSince) {
-      handleChange('fullMemberSince', '');
-    }
   };
 
   const facultyOptions = [
@@ -141,7 +131,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
     setMessage('');
 
     const editableFields = [
-      'firstName', 'lastName', 'address', 'gender', 'phone',
+      'firstName', 'lastName', 'address', 'houseNumber', 'postalCode', 'city', 'gender', 'phone',
       'privateEmail', 'dietType', 'shirtSize', 'drinkIds', 'facultyId',
     ];
     if (values.facultyId === FACULTY_OTHER) editableFields.push('facultyOther');
@@ -154,9 +144,6 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
     setSubmitting(true);
     try {
       const payload = { ...values };
-      if (pendingMembership) {
-        delete payload.membershipLevel;
-      }
       // Normalize faculty
       payload.facultyId = values.facultyId && values.facultyId !== FACULTY_OTHER ? parseInt(values.facultyId) : null;
       payload.facultyOther = values.facultyId === FACULTY_OTHER ? values.facultyOther : null;
@@ -243,7 +230,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <InfoRow label="OIB" value={member.oib} />
             <InfoRow label="Datum rođenja" value={formatDate(member.dateOfBirth)} />
             <InfoRow label="Spol" value={GENDER_LABELS[member.gender] || member.gender} />
-            <InfoRow label="Adresa" value={member.address} />
+            <InfoRow label="Adresa" value={formatAddress(member)} />
             <InfoRow label="Fakultet" value={facultyDisplay(member)} />
             <InfoRow label="Telefon" value={member.phone} />
             <InfoRow label="Privatni e-mail">
@@ -267,12 +254,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <InfoRow label="Datum učlanjenja" value={formatDate(member.memberSince)} />
             <InfoRow label="Broj iskaznice" value={member.cardNumber} />
             <InfoRow label="Razina članstva">
-              {MEMBERSHIP_LABELS[member.membershipLevel]}
-              {pendingMembership && (
-                <span className="block text-xs text-brand-orange">
-                  promjena na {MEMBERSHIP_LABELS[pendingMembership.newValue]} čeka odobrenje
-                </span>
-              )}
+              <MembershipLabel value={member.membershipLevel} />
             </InfoRow>
             {member.fullMemberSince && (
               <InfoRow label="Punopravni od" value={formatDate(member.fullMemberSince)} />
@@ -321,7 +303,11 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
                 <p className="text-sm text-content-secondary">
                   Učitajte potvrdu o studiranju (PDF, max 5 MB). Ide voditelju na odobrenje.
                 </p>
-                <p className="text-xs text-content-muted -mt-2">Preuzmi ju putem e-Građani</p>
+                <p className="text-xs text-content-muted -mt-2">
+                  <a href="https://issp.srce.hr/e-potvrda/student" target="_blank" rel="noopener noreferrer" className="text-brand-orange underline">
+                    Preuzmite potvrdu putem e-Građani
+                  </a>
+                </p>
                 <div className="flex items-center gap-3">
                   <label className="btn-secondary cursor-pointer">
                     Odaberi datoteku
@@ -372,9 +358,16 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <div>Datum rođenja: {formatDate(member.dateOfBirth)}</div>
           </div>
 
-          <TextField name="address" label="Adresa" required
+          <TextField name="address" label="Ulica" required
             value={values.address} onChange={handleChange} onBlur={handleBlur} error={showError('address')} />
-          <p className="text-xs text-content-muted -mt-3 mb-4">(Ulica, kućni broj, poštanski broj, mjesto)</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+            <TextField name="houseNumber" label="Kućni broj" required
+              value={values.houseNumber} onChange={handleChange} onBlur={handleBlur} error={showError('houseNumber')} />
+            <TextField name="postalCode" label="Poštanski broj" required
+              value={values.postalCode} onChange={handleChange} onBlur={handleBlur} error={showError('postalCode')} />
+            <TextField name="city" label="Mjesto" required
+              value={values.city} onChange={handleChange} onBlur={handleBlur} error={showError('city')} />
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <SelectField name="gender" label="Spol" required options={GENDER_OPTIONS}
@@ -402,22 +395,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <div>Matična sekcija: {member.homeSection?.name}</div>
           </div>
 
-          {pendingMembership ? (
-            <Alert kind="info">
-              Promjena razine članstva na <strong>{MEMBERSHIP_LABELS[pendingMembership.newValue]}</strong> čeka
-              odobrenje voditelja. Ne možete je mijenjati dok se ne obradi.
-            </Alert>
-          ) : (
-            <SelectField
-              name="membershipLevel"
-              label="Razina članstva (promjena ide voditelju na odobrenje)"
-              options={MEMBERSHIP_LEVEL_OPTIONS}
-              value={values.membershipLevel}
-              onChange={handleMembershipChange}
-              onBlur={handleBlur}
-              error={showError('membershipLevel')}
-            />
-          )}
+          <InfoRow label="Razina članstva"><MembershipLabel value={member.membershipLevel} /></InfoRow>
 
           {member.membershipLevel === 'PUNOPRAVNO' && (
             <DateField name="fullMemberSince" label="Datum postanka punopravnim članom"
@@ -426,7 +404,8 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <MultiCheckDropdown name="sectionIds" label="Pridružene sekcije"
-              options={lookups.sections} value={values.sectionIds} onChange={handleChange} onBlur={handleBlur} error={showError('sectionIds')} />
+              options={lookups.sections.filter((section) => section.id !== member.homeSectionId)}
+              value={values.sectionIds} onChange={handleChange} onBlur={handleBlur} error={showError('sectionIds')} />
             <MultiCheckDropdown name="teamIds" label="Timovi"
               options={lookups.teams} value={values.teamIds} onChange={handleChange} onBlur={handleBlur} error={showError('teamIds')} />
           </div>
