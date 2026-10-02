@@ -65,6 +65,7 @@ export const memberValidators = {
   dietType: required('Tip prehrane'),
   shirtSize: required('Veličina majice'),
   drinkIds: requiredArray('Pića', 1),
+  transportVolunteer: (v) => (typeof v === 'boolean' ? null : 'Odaberite mogućnost prijevoza.'),
   acceptedDocuments: (v) => (v ? null : 'Morate prihvatiti akte i dokumente udruge.'),
 };
 

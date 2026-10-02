@@ -26,6 +26,7 @@ const EDITABLE_SCALAR_FIELDS = [
   'fullMemberSince',
   'dietType',
   'shirtSize',
+  'transportVolunteer',
 ];
 
 // Admins can edit everything a member can, plus identity/card fields and
@@ -104,6 +105,13 @@ router.patch('/me', authenticateToken, async (req, res) => {
     const data = {};
     for (const field of EDITABLE_SCALAR_FIELDS) {
       if (field in body) {
+        if (field === 'transportVolunteer') {
+          if (typeof body[field] !== 'boolean') {
+            return res.status(400).json({ error: 'Nevažeći odabir prijevoza.' });
+          }
+          data[field] = body[field];
+          continue;
+        }
         if (field === 'fullMemberSince') {
           data[field] = body[field] ? new Date(body[field]) : null;
         } else {
@@ -545,6 +553,13 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
     const data = {};
     for (const field of ADMIN_EDITABLE_SCALAR_FIELDS) {
       if (!(field in body)) continue;
+      if (field === 'transportVolunteer') {
+        if (typeof body[field] !== 'boolean') {
+          return res.status(400).json({ error: 'Nevažeći odabir prijevoza.' });
+        }
+        data[field] = body[field];
+        continue;
+      }
       if (field === 'fullMemberSince' || field === 'dateOfBirth' || field === 'memberSince') {
         data[field] = body[field] ? new Date(body[field]) : field === 'fullMemberSince' ? null : undefined;
         if (data[field] === undefined || (data[field] && Number.isNaN(data[field].getTime()))) {

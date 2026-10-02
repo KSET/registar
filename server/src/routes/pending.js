@@ -32,7 +32,7 @@ const NON_EDITABLE_PENDING_FIELDS = ['membershipLevel', 'cardNumber', 'memberSin
 // These values do not require applicant or leader decisions: preferences can
 // be updated later, and membership/card number are system/manager controlled.
 const AUTO_APPROVED_FIELDS = [
-  'dietType', 'shirtSize', 'drinkIds', 'allergyIds', 'membershipLevel', 'cardNumber',
+  'dietType', 'shirtSize', 'drinkIds', 'allergyIds', 'membershipLevel', 'cardNumber', 'transportVolunteer',
 ];
 
 const requiredPendingText = (label) => (value) =>
@@ -51,6 +51,8 @@ const PENDING_FIELD_VALIDATORS = {
     ['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(v) ? null : 'Nevažeća razina članstva.',
   dietType: (v) =>
     ['MESOJED', 'VEGETARIJANSTVO', 'VEGANSTVO', 'SVEJED'].includes(v) ? null : 'Nevažeći tip prehrane.',
+  transportVolunteer: (v) =>
+    typeof v === 'boolean' ? null : 'Nevažeći odabir prijevoza.',
   // Not every member has a @kset.org address, so this may be left blank -
   // only its format is checked when something's actually been entered.
   ksetEmail: (v) => (!v || /^\S+@\S+\.\S+$/.test(v) ? null : 'Nevažeći format KSET e-maila.'),
@@ -139,6 +141,7 @@ router.post('/', authenticateToken, (req, res) => {
       const drinkIds = parseArr(req.body.drinkIds);
       const allergyIds = parseArr(req.body.allergyIds);
       const acceptedDocuments = parseBool(req.body.acceptedDocuments);
+      const transportVolunteer = parseBool(req.body.transportVolunteer);
 
       if (req.file) req.file.buffer = normalizePdfBuffer(req.file.buffer);
 
@@ -169,6 +172,9 @@ router.post('/', authenticateToken, (req, res) => {
       }
       if (!shirtSize || !shirtSize.trim()) errors.push('Veličina majice je obavezna.');
       if (!acceptedDocuments) errors.push('Morate prihvatiti akte i dokumente udruge.');
+      if (req.body.transportVolunteer !== undefined && !['true', 'false'].includes(req.body.transportVolunteer)) {
+        errors.push('Nevažeći odabir prijevoza.');
+      }
       if (!drinkIds || drinkIds.length === 0) errors.push('Morate odabrati barem jedno piće.');
       if (!req.file) errors.push('Potvrda o studiranju je obavezna (PDF).');
       else if (!isPdfBuffer(req.file.buffer)) errors.push('Datoteka nije valjan PDF.');
@@ -255,6 +261,7 @@ router.post('/', authenticateToken, (req, res) => {
         allergyIds: allergyResult.ids,
         dietType,
         shirtSize: shirtSize.trim(),
+        transportVolunteer,
         acceptedDocuments,
       };
 
@@ -647,6 +654,7 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
           homeSectionId: data.homeSectionId,
           dietType: data.dietType,
           shirtSize: data.shirtSize,
+          transportVolunteer: Boolean(data.transportVolunteer),
           acceptedDocuments: data.acceptedDocuments,
           certificatePath: data.certificatePath || null,
           certificateValidUntil: data.certificatePath ? nextCertificateValidUntil() : null,

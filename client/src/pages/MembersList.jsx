@@ -7,7 +7,7 @@ import { MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, GENDER_OPTIONS, SHIRT_SIZE
 import { formatDate } from '../date';
 import { formatAddress } from '../address';
 import { PageContainer, Card, Alert, ConfirmDialog, ErrorPopup } from '../components/ui';
-import { TextField, SelectField, MultiCheckDropdown, DateField } from '../components/Field';
+import { TextField, SelectField, MultiCheckDropdown, CheckboxField, DateField } from '../components/Field';
 import MembershipLabel from '../components/MembershipLabel';
 
 const DIET_LABELS = Object.fromEntries(DIET_TYPE_OPTIONS.map((o) => [o.value, o.label]));
@@ -517,6 +517,7 @@ function MemberEditForm({ member, lookups, submitting, setSubmitting, setError, 
       fullMemberSince: member.fullMemberSince ? member.fullMemberSince.split('T')[0] : '',
       dietType: member.dietType,
       shirtSize: member.shirtSize,
+      transportVolunteer: member.transportVolunteer ?? false,
       homeSectionId: member.homeSectionId ? String(member.homeSectionId) : '',
       sectionIds: member.sections.map((s) => s.section.id).filter((id) => String(id) !== String(member.homeSectionId)),
       teamIds: member.teams.map((t) => t.team.id),
@@ -653,6 +654,10 @@ function MemberEditForm({ member, lookups, submitting, setSubmitting, setError, 
           <MultiCheckDropdown name="allergyIds" label="Alergije"
             options={lookups.allergies} value={values.allergyIds} onChange={handleChange} onBlur={handleBlur} error={showError('allergyIds')} />
         </div>
+        <CheckboxField name="transportVolunteer"
+          label="Imam auto i zainteresiran sam povremeno pomoći klubu s prijevozom stvari i ljudi."
+          value={values.transportVolunteer} onChange={handleChange} onBlur={handleBlur}
+          error={showError('transportVolunteer')} />
       </Card>
 
       <div className="flex gap-3">

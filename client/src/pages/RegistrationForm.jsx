@@ -45,6 +45,7 @@ export default function RegistrationForm({ email, onSubmitted }) {
       allergyIds: [],
       dietType: '',
       shirtSize: '',
+      transportVolunteer: false,
       acceptedDocuments: false,
     },
     memberValidators
@@ -100,6 +101,7 @@ export default function RegistrationForm({ email, onSubmitted }) {
       fd.append('homeSectionId', String(parseInt(values.homeSectionId)));
       fd.append('dietType', values.dietType);
       fd.append('shirtSize', values.shirtSize);
+      fd.append('transportVolunteer', String(values.transportVolunteer));
       fd.append('acceptedDocuments', String(values.acceptedDocuments));
       if (isKset) fd.append('privateEmail', values.privateEmail);
 
@@ -244,6 +246,10 @@ export default function RegistrationForm({ email, onSubmitted }) {
           </div>
 
           <div className="mt-2">
+            <CheckboxField name="transportVolunteer"
+              label="Imam auto i zainteresiran sam povremeno pomoći klubu s prijevozom stvari i ljudi."
+              value={values.transportVolunteer} onChange={handleChange} onBlur={handleBlur}
+              error={showError('transportVolunteer')} />
             <CheckboxField name="acceptedDocuments"
               label={
                 <>

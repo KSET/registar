@@ -92,7 +92,7 @@ export default function ApprovalDashboard() {
     if (fieldName === 'gender') return GENDER_LABELS[value] || value;
     if (fieldName === 'homeSectionId') return homeSectionMap[value] || value;
     if (fieldName === 'facultyId') return facultyMap[value] || value;
-    if (fieldName === 'acceptedDocuments') return value ? 'Da' : 'Ne';
+    if (typeof value === 'boolean') return value ? 'Da' : 'Ne';
     if (nameMaps[fieldName]) {
       const arr = Array.isArray(value) ? value : [];
       return arr.map((id) => nameMaps[fieldName][id] || id).join(', ') || '-';

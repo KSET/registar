@@ -6,7 +6,7 @@ import { memberValidators } from '../validation';
 import { formatDate, isDateOnOrAfterToday } from '../date';
 import { formatAddress } from '../address';
 import { PageContainer, Card, Alert } from '../components/ui';
-import { TextField, SelectField, MultiCheckDropdown, DateField } from '../components/Field';
+import { TextField, SelectField, MultiCheckDropdown, CheckboxField, DateField } from '../components/Field';
 import MembershipLabel from '../components/MembershipLabel';
 import { GENDER_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
 
@@ -79,6 +79,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
       fullMemberSince: member.fullMemberSince ? member.fullMemberSince.split('T')[0] : '',
       dietType: member.dietType,
       shirtSize: member.shirtSize,
+      transportVolunteer: member.transportVolunteer ?? false,
       sectionIds: member.sections.map((s) => s.section.id).filter((id) => id !== member.homeSectionId),
       teamIds: member.teams.map((t) => t.team.id),
       drinkIds: member.drinks.map((d) => d.drink.id),
@@ -107,6 +108,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
       fullMemberSince: member.fullMemberSince ? member.fullMemberSince.split('T')[0] : '',
       dietType: member.dietType,
       shirtSize: member.shirtSize,
+      transportVolunteer: member.transportVolunteer ?? false,
       sectionIds: member.sections.map((s) => s.section.id).filter((id) => id !== member.homeSectionId),
       teamIds: member.teams.map((t) => t.team.id),
       drinkIds: member.drinks.map((d) => d.drink.id),
@@ -133,6 +135,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
     const editableFields = [
       'firstName', 'lastName', 'address', 'houseNumber', 'postalCode', 'city', 'gender', 'phone',
       'privateEmail', 'dietType', 'shirtSize', 'drinkIds', 'facultyId',
+      'transportVolunteer',
     ];
     if (values.facultyId === FACULTY_OTHER) editableFields.push('facultyOther');
 
@@ -285,6 +288,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <InfoRow label="Pića" value={member.drinks.map((d) => d.drink.name).join(', ') || '-'} />
             <InfoRow label="Alergije" value={member.allergies.map((a) => a.allergy.name).join(', ') || '-'} />
             <InfoRow label="Veličina majice" value={member.shirtSize} />
+            <InfoRow label="Prijevoz za klub" value={member.transportVolunteer ? 'Da' : 'Ne'} />
           </Card>
           <Card title="Potvrda o studiranju">
             {certMsg && <Alert kind="success">{certMsg}</Alert>}
@@ -421,6 +425,10 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
               options={lookups.drinks} value={values.drinkIds} onChange={handleChange} onBlur={handleBlur} error={showError('drinkIds')} />
             <MultiCheckDropdown name="allergyIds" label="Alergije"
               options={lookups.allergies} value={values.allergyIds} onChange={handleChange} onBlur={handleBlur} error={showError('allergyIds')} />
+            <CheckboxField name="transportVolunteer"
+              label="Imam auto i zainteresiran sam povremeno pomoći klubu s prijevozom stvari i ljudi."
+              value={values.transportVolunteer} onChange={handleChange} onBlur={handleBlur}
+              error={showError('transportVolunteer')} />
           </div>
         </Card>
 

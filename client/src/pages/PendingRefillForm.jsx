@@ -55,6 +55,8 @@ function RefillField({ fieldKey, form, lookups, homeSectionId }) {
       return <MultiCheckDropdown {...common} label={label} options={lookups.allergies} />;
     case 'acceptedDocuments':
       return <CheckboxField {...common} label="Prihvaćam akte i dokumente udruge" />;
+    case 'transportVolunteer':
+      return <CheckboxField {...common} label="Imam auto i zainteresiran sam povremeno pomoći klubu s prijevozom stvari i ljudi." />;
     case 'dateOfBirth':
     case 'memberSince':
       return <DateField {...common} label={label} required />;

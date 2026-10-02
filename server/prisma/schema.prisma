@@ -101,6 +101,7 @@ model Member {
   fullMemberSince    DateTime?       @db.Date
   dietType           DietType
   shirtSize          String
+  transportVolunteer Boolean         @default(false)
   acceptedDocuments  Boolean         @default(false)
   certificatePath    String?
   certificateValidUntil DateTime?    @db.Date
@@ -227,4 +228,3 @@ model HonoraryMember {
   lastName  String
   createdAt DateTime @default(now())
 }
-
