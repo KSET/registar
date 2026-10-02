@@ -17,6 +17,7 @@ const ROLE_LABELS = {
   VODITELJ_SEKCIJE: 'Voditelj sekcije',
   ADMINISTRATOR: 'Administrator',
 };
+const COUNCIL_FILTER = 'savjet';
 const FACULTY_OTHER = 'OTHER';
 
 function toDateInput(d) {
@@ -75,13 +76,16 @@ export default function MembersList({ isAdmin, canManageMembership }) {
       `${m.firstName} ${m.lastName}`.toLowerCase().includes(q) ||
       (m.ksetEmail || '').toLowerCase().includes(q) ||
       (m.privateEmail || '').toLowerCase().includes(q);
-    const matchesSection = sectionFilter === null || m.homeSection?.id === sectionFilter;
+    const matchesSection =
+      sectionFilter === null ||
+      (sectionFilter === COUNCIL_FILTER ? m.isCouncilMember : m.homeSection?.id === sectionFilter);
     return matchesSearch && matchesSection;
   });
 
   const sectionCounts = Object.fromEntries(
     lookups.sections.map((s) => [s.id, members.filter((m) => m.homeSection?.id === s.id).length])
   );
+  const councilCount = members.filter((m) => m.isCouncilMember).length;
 
   if (loading) {
     return <PageContainer title="Članovi"><p className="text-content-secondary">Učitavanje...</p></PageContainer>;
@@ -125,7 +129,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
               : 'border-surface-border text-content-secondary hover:text-content-primary hover:bg-surface-overlay'
           }`}
         >
-          Sve sekcije ({members.length})
+          Sve članovi ({members.length})
         </button>
         {lookups.sections.map((s) => (
           <button
@@ -141,6 +145,17 @@ export default function MembersList({ isAdmin, canManageMembership }) {
             {s.name} ({sectionCounts[s.id] || 0})
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => setSectionFilter(COUNCIL_FILTER)}
+          className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+            sectionFilter === COUNCIL_FILTER
+              ? 'bg-brand-orange text-brand-dark border-brand-orange'
+              : 'border-surface-border text-content-secondary hover:text-content-primary hover:bg-surface-overlay'
+          }`}
+        >
+          Savjet ({councilCount})
+        </button>
       </div>
 
       <div className="mb-4">

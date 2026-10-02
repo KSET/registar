@@ -331,6 +331,7 @@ const LIST_SELECT = {
   homeSectionId: true,
   homeSection: { select: { id: true, name: true } },
   sections: { select: { sectionId: true } },
+  appRole: true,
 };
 
 function toListItem(m, limited) {
@@ -342,6 +343,7 @@ function toListItem(m, limited) {
     privateEmail: m.privateEmail,
     phone: m.phone,
     homeSection: m.homeSection,
+    isCouncilMember: m.appRole === 'VODITELJ_SEKCIJE' || m.appRole === 'ADMINISTRATOR',
     limited,
   };
 }
