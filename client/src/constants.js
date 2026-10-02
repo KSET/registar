@@ -64,7 +64,7 @@ export const FIELD_LABELS = {
   teamIds: 'Timovi',
   drinkIds: 'Pića',
   allergyIds: 'Alergije',
-  transportVolunteer: 'Prijevoz za klub',
+  transportVolunteer: 'Kombi sekcija',
   dietType: 'Tip prehrane',
   shirtSize: 'Veličina majice',
   acceptedDocuments: 'Prihvaćanje akata',

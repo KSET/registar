@@ -288,7 +288,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <InfoRow label="Pića" value={member.drinks.map((d) => d.drink.name).join(', ') || '-'} />
             <InfoRow label="Alergije" value={member.allergies.map((a) => a.allergy.name).join(', ') || '-'} />
             <InfoRow label="Veličina majice" value={member.shirtSize} />
-            <InfoRow label="Prijevoz za klub" value={member.transportVolunteer ? 'Da' : 'Ne'} />
+            <InfoRow label="Kombi sekcija" value={member.transportVolunteer ? 'Da' : 'Ne'} />
           </Card>
           <Card title="Potvrda o studiranju">
             {certMsg && <Alert kind="success">{certMsg}</Alert>}
