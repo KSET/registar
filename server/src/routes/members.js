@@ -9,7 +9,7 @@ const { deleteCertificate } = require('./uploads');
 
 const router = express.Router();
 
-const LOCKED_FIELDS = ['oib', 'dateOfBirth', 'cardNumber', 'memberSince'];
+const LOCKED_FIELDS = ['oib', 'dateOfBirth', 'cardNumber', 'memberSince', 'discordId'];
 const CERTIFICATE_FIELDS = ['certificatePath', 'certificateValidUntil'];
 const MAX_LEADERS_PER_SECTION = 2;
 

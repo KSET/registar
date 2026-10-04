@@ -25,13 +25,6 @@ function createOAuthUrl(state) {
 async function startDiscordVerification(discordId) {
   const state = crypto.randomBytes(32).toString('hex');
   const oauthUrl = createOAuthUrl(state);
-  const linkedMember = await prisma.member.findUnique({
-    where: { discordId },
-    select: { id: true },
-  });
-  if (linkedMember) {
-    return { error: 'already_linked' };
-  }
 
   const now = new Date();
   const windowStart = new Date(now.getTime() - START_WINDOW_MS);
@@ -132,6 +125,18 @@ async function completeDiscordVerification(state, email, emailVerified) {
     }
 
     const member = matchingMembers[0];
+    const discordOwner = await tx.member.findUnique({
+      where: { discordId: attempt.discordId },
+      select: { id: true },
+    });
+    if (discordOwner && discordOwner.id !== member.id) {
+      await tx.discordVerification.update({
+        where: { state },
+        data: { status: 'FAILED', completedAt: now },
+      });
+      return { status: 'FAILED' };
+    }
+
     const verifyEmailFields = {};
     if (member.privateEmail?.toLowerCase() === normalizedEmail) {
       verifyEmailFields.privateEmailVerified = true;
@@ -143,7 +148,7 @@ async function completeDiscordVerification(state, email, emailVerified) {
     const linked = await tx.member.updateMany({
       where: {
         id: member.id,
-        OR: [{ discordId: null }, { discordId: attempt.discordId }],
+        discordId: member.discordId,
       },
       data: { discordId: attempt.discordId, ...verifyEmailFields },
     });

@@ -19,9 +19,6 @@ router.post('/verification/start', ...routerAuth, async (req, res) => {
 
   try {
     const result = await startDiscordVerification(discordId);
-    if (result.error === 'already_linked') {
-      return res.status(409).json({ error: 'Discord račun je već povezan.' });
-    }
     if (result.error === 'rate_limited') {
       return res.status(429).json({ error: 'Previše pokušaja verifikacije.' });
     }

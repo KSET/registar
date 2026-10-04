@@ -289,6 +289,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <InfoRow label="Alergije" value={member.allergies.map((a) => a.allergy.name).join(', ') || '-'} />
             <InfoRow label="Veličina majice" value={member.shirtSize} />
             <InfoRow label="Kombi sekcija" value={member.transportVolunteer ? 'Da' : 'Ne'} />
+            <InfoRow label="Discord korisnički ID" value={member.discordId || 'Nije povezan'} />
           </Card>
           <Card title="Potvrda o studiranju">
             {certMsg && <Alert kind="success">{certMsg}</Alert>}
@@ -417,6 +418,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
 
         <Card title="Ostalo">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+            <InfoRow label="Discord korisnički ID" value={member.discordId || 'Nije povezan'} />
             <SelectField name="dietType" label="Tip prehrane" required options={DIET_TYPE_OPTIONS}
               value={values.dietType} onChange={handleChange} onBlur={handleBlur} error={showError('dietType')} />
             <SelectField name="shirtSize" label="Veličina majice" required options={SHIRT_SIZE_OPTIONS}
