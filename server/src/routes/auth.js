@@ -29,6 +29,136 @@ function findMemberByVerifiedEmail(email) {
 const LOGIN_STATE_COOKIE = 'oauth_login_state';
 const LOGIN_STATE_TTL_MS = 10 * 60 * 1000;
 
+function discordVerificationPage(success) {
+  const title = success ? 'Verifikacija završena' : 'Verifikacija nije uspjela';
+  const heading = success ? 'Discord račun je povezan.' : 'Verifikacija nije uspjela.';
+  const message = success
+    ? 'Vaš račun je uspješno povezan s Registrom članova KSET-a.'
+    : 'Račun nije moguće povezati. Vratite se u Discord i pokušajte ponovo.';
+  const status = success ? 'Povezivanje uspješno' : 'Povezivanje nije dovršeno';
+  const icon = success ? '&#10003;' : '!';
+
+  return `<!doctype html>
+<html lang="hr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#17353b">
+    <title>${title}</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        min-height: 100vh;
+        margin: 0;
+        padding: 32px 20px;
+        display: grid;
+        place-items: center;
+        color: #20343a;
+        background:
+          radial-gradient(ellipse at 12% 12%, rgba(247, 145, 36, .2), transparent 32%),
+          radial-gradient(ellipse at 88% 88%, rgba(86, 135, 143, .25), transparent 34%),
+          #17353b;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .page { width: 100%; max-width: 520px; text-align: center; }
+      .card {
+        overflow: hidden;
+        padding: 42px 44px 36px;
+        border: 1px solid rgba(255, 255, 255, .62);
+        border-radius: 22px;
+        background: #fff;
+        box-shadow: 0 28px 80px rgba(5, 20, 24, .32);
+      }
+      .logo-wrap {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 196px;
+        max-width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #edf0ef;
+        border-radius: 12px;
+        background: #f8f9f7;
+      }
+      .logo { display: block; width: 100%; height: auto; }
+      .icon {
+        display: grid;
+        place-items: center;
+        width: 56px;
+        height: 56px;
+        margin: 30px auto 18px;
+        border: 1px solid ${success ? '#b8e1cf' : '#f3d5b7'};
+        border-radius: 50%;
+        color: ${success ? '#16734a' : '#a85b17'};
+        background: ${success ? '#e8f6ef' : '#fff4e8'};
+        font-size: 27px;
+        font-weight: 700;
+      }
+      .eyebrow {
+        margin: 0 0 12px;
+        color: ${success ? '#16734a' : '#a85b17'};
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: .09em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0;
+        color: #20343a;
+        font-size: clamp(24px, 6vw, 30px);
+        line-height: 1.2;
+        letter-spacing: -.035em;
+      }
+      .message {
+        max-width: 360px;
+        margin: 14px auto 0;
+        color: #62747a;
+        font-size: 15px;
+        line-height: 1.7;
+      }
+      .divider { height: 1px; margin: 28px 0 20px; background: #e9edec; }
+      .return-note {
+        margin: 0;
+        color: #52656b;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .brand {
+        margin: 24px 0 0;
+        color: rgba(255, 255, 255, .66);
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: .04em;
+      }
+      @media (max-width: 480px) {
+        body { padding: 20px 16px; }
+        .card { padding: 32px 24px 28px; border-radius: 18px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="card" aria-labelledby="status-heading">
+        <div class="logo-wrap">
+          <img class="logo" src="${config.clientUrl}/logo-full.png" alt="KSET">
+        </div>
+        <div class="icon" aria-hidden="true">${icon}</div>
+        <p class="eyebrow">${status}</p>
+        <h1 id="status-heading">${heading}</h1>
+        <p class="message">${message}</p>
+        <div class="divider"></div>
+        <p class="return-note">${
+          success
+            ? 'Sada možete zatvoriti ovu karticu i vratiti se u Discord.'
+            : 'Zatvorite ovu karticu, vratite se u Discord i pokušajte ponovo.'
+        }</p>
+      </section>
+      <p class="brand">REGISTAR ČLANOVA KSET-A</p>
+    </main>
+  </body>
+</html>`;
+}
+
 function verifyLoginOAuthState(req, res, next) {
   const state = typeof req.query.state === 'string' ? req.query.state : '';
   if (/^discord:[0-9a-f]{64}$/.test(state)) {
@@ -100,12 +230,14 @@ router.get(
         );
         res.set('Cache-Control', 'no-store');
         res.set('Referrer-Policy', 'no-referrer');
+        res.set(
+          'Content-Security-Policy',
+          `default-src 'none'; style-src 'unsafe-inline'; img-src 'self' ${new URL(config.clientUrl).origin}; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
+        );
         return res
           .status(result.status === 'SUCCESS' ? 200 : 400)
           .type('html')
-          .send(result.status === 'SUCCESS'
-            ? '<!doctype html><html lang="hr"><meta charset="utf-8"><title>Verifikacija završena</title><body><h1>Discord račun je povezan.</h1><p>Možete zatvoriti ovu karticu i vratiti se u Discord.</p></body></html>'
-            : '<!doctype html><html lang="hr"><meta charset="utf-8"><title>Verifikacija nije uspjela</title><body><h1>Verifikacija nije uspjela.</h1><p>Račun nije moguće povezati. Vratite se u Discord i pokušajte ponovo.</p></body></html>');
+          .send(discordVerificationPage(result.status === 'SUCCESS'));
       }
 
       const { email, displayName } = req.user;
