@@ -21,6 +21,7 @@ passport.use(
 
       return done(null, {
         email,
+        emailVerified: profile.emails[0].verified === true,
         displayName: profile.displayName,
         googleId: profile.id,
       });

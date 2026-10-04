@@ -29,10 +29,10 @@ const upload = multer({
 // supplied is editable like any other field.
 const NON_EDITABLE_PENDING_FIELDS = ['membershipLevel', 'cardNumber', 'memberSince'];
 
-// These values do not require applicant or leader decisions: preferences can
-// be updated later, and membership/card number are system/manager controlled.
+// These values do not require applicant or leader decisions: preferences and
+// the optional transport volunteer preference can be updated later.
 const AUTO_APPROVED_FIELDS = [
-  'dietType', 'shirtSize', 'drinkIds', 'allergyIds', 'membershipLevel', 'cardNumber', 'transportVolunteer',
+  'dietType', 'shirtSize', 'drinkIds', 'allergyIds', 'transportVolunteer',
 ];
 
 const requiredPendingText = (label) => (value) =>
@@ -140,8 +140,8 @@ router.post('/', authenticateToken, (req, res) => {
       const teamIds = parseArr(req.body.teamIds);
       const drinkIds = parseArr(req.body.drinkIds);
       const allergyIds = parseArr(req.body.allergyIds);
-      const acceptedDocuments = parseBool(req.body.acceptedDocuments);
       const transportVolunteer = parseBool(req.body.transportVolunteer);
+      const acceptedDocuments = parseBool(req.body.acceptedDocuments);
 
       if (req.file) req.file.buffer = normalizePdfBuffer(req.file.buffer);
 

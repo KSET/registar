@@ -9,6 +9,7 @@ const { logAction, logError } = require('../utils/auditLog');
 const { isKsetEmail } = require('../utils/email');
 const { createLinkNonce, consumeLinkNonce } = require('../utils/linkNonce');
 const { createLoginTicket, consumeLoginTicket } = require('../utils/oauthLoginTicket');
+const { completeDiscordVerification } = require('../utils/discordVerification');
 
 const router = express.Router();
 const JWT_ALGORITHM = 'HS256';
@@ -30,6 +31,10 @@ const LOGIN_STATE_TTL_MS = 10 * 60 * 1000;
 
 function verifyLoginOAuthState(req, res, next) {
   const state = typeof req.query.state === 'string' ? req.query.state : '';
+  if (/^discord:[0-9a-f]{64}$/.test(state)) {
+    res.clearCookie(LOGIN_STATE_COOKIE, { path: '/api/auth/google/callback' });
+    return next();
+  }
   if (/^link:[0-9a-f]{48}$/.test(state)) {
     res.clearCookie(LOGIN_STATE_COOKIE, { path: '/api/auth/google/callback' });
     return next();
@@ -76,6 +81,7 @@ router.get(
   }),
   async (req, res) => {
     const linkStateMatch = /^link:([0-9a-f]{48})$/.exec(req.query.state || '');
+    const discordStateMatch = /^discord:([0-9a-f]{64})$/.exec(req.query.state || '');
 
     if (linkStateMatch) {
       const memberId = consumeLinkNonce(linkStateMatch[1]);
@@ -86,6 +92,22 @@ router.get(
     }
 
     try {
+      if (discordStateMatch) {
+        const result = await completeDiscordVerification(
+          discordStateMatch[1],
+          req.user.email,
+          req.user.emailVerified
+        );
+        res.set('Cache-Control', 'no-store');
+        res.set('Referrer-Policy', 'no-referrer');
+        return res
+          .status(result.status === 'SUCCESS' ? 200 : 400)
+          .type('html')
+          .send(result.status === 'SUCCESS'
+            ? '<!doctype html><html lang="hr"><meta charset="utf-8"><title>Verifikacija završena</title><body><h1>Discord račun je povezan.</h1><p>Možete zatvoriti ovu karticu i vratiti se u Discord.</p></body></html>'
+            : '<!doctype html><html lang="hr"><meta charset="utf-8"><title>Verifikacija nije uspjela</title><body><h1>Verifikacija nije uspjela.</h1><p>Račun nije moguće povezati. Vratite se u Discord i pokušajte ponovo.</p></body></html>');
+      }
+
       const { email, displayName } = req.user;
 
       let member = await findMemberByVerifiedEmail(email);

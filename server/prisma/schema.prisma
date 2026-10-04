@@ -45,6 +45,14 @@ enum FieldStatus {
   REJECTED
 }
 
+enum DiscordVerificationStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  EXPIRED
+}
+
 model Section {
   id   Int    @id @default(autoincrement())
   name String @unique
@@ -92,7 +100,7 @@ model Member {
   facultyOther       String?
   phone              String
   privateEmail       String          @unique
-  privateEmailVerified Boolean       @default(false)
+  privateEmailVerified Boolean         @default(false)
   ksetEmail          String?         @unique
   ksetEmailVerified  Boolean         @default(true)
   memberSince        DateTime        @db.Date
@@ -106,6 +114,7 @@ model Member {
   certificatePath    String?
   certificateValidUntil DateTime?    @db.Date
   appRole            AppRole         @default(CLAN)
+  discordId          String?         @unique @db.VarChar(20)
 
   homeSectionId      Int
   homeSection        Section         @relation("HomeSection", fields: [homeSectionId], references: [id])
@@ -120,11 +129,25 @@ model Member {
 
   pendingFieldChanges  PendingFieldChange[] @relation("MemberChanges")
   reviewedFieldChanges PendingFieldChange[] @relation("ReviewedBy")
+  discordVerifications DiscordVerification[]
 
   auditLogs          AuditLog[]
 
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
+}
+
+model DiscordVerification {
+  state       String                    @id @db.VarChar(64)
+  discordId   String                    @db.VarChar(20)
+  status      DiscordVerificationStatus @default(PENDING)
+  memberId    Int?
+  member      Member?                   @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  createdAt   DateTime                  @default(now())
+  completedAt DateTime?
+
+  @@index([discordId, createdAt])
+  @@index([createdAt])
 }
 
 model MemberSection {

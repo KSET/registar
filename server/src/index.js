@@ -18,6 +18,7 @@ const facultyRoutes = require('./routes/faculties');
 const uploadRoutes = require('./routes/uploads');
 const importRoutes = require('./routes/importRoutes');
 const honoraryMemberRoutes = require('./routes/honoraryMembers');
+const discordRoutes = require('./routes/discord');
 
 const app = express();
 
@@ -58,6 +59,7 @@ const apiLimiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.originalUrl.startsWith('/api/discord/'),
 });
 app.use('/api', apiLimiter);
 
@@ -73,6 +75,12 @@ app.use('/api/faculties', facultyRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/import', importRoutes);
 app.use('/api/honorary-members', honoraryMemberRoutes);
+app.use('/api/discord', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1200,
+  standardHeaders: true,
+  legacyHeaders: false,
+}), discordRoutes);
 
 // Serves the built React app if present (the production image copies
 // client/dist in at build time; local dev runs the client separately via

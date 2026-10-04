@@ -42,8 +42,6 @@ services:
       - "3002:3000"
     volumes:
       - ./client/src:/app/src
-    env_file:
-      - .env
     labels:
       - "traefik.enable=true"
       - "DomainName=registar.kset.org"
