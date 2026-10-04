@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { authHeaders, jsonHeaders, openCertificate } from '../api/auth';
 import { useLookupData } from '../useLookupData';
 import { useForm } from '../useForm';
@@ -30,14 +31,32 @@ function facultyDisplay(m) {
 
 export default function MembersList({ isAdmin, canManageMembership }) {
   const lookups = useLookupData();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sectionFilter, setSectionFilter] = useState(null); // null = svi
-  const [selectedId, setSelectedId] = useState(null);
+  const selectedMemberParam = searchParams.get('member');
+  const selectedId = selectedMemberParam && /^[1-9]\d*$/.test(selectedMemberParam)
+    ? Number(selectedMemberParam)
+    : null;
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [message, setMessage] = useState('');
+
+  const openMember = (id) => {
+    setSearchParams((params) => {
+      params.set('member', String(id));
+      return params;
+    });
+  };
+
+  const closeMember = () => {
+    setSearchParams((params) => {
+      params.delete('member');
+      return params;
+    }, { replace: true });
+  };
 
   useEffect(() => {
     load();
@@ -95,7 +114,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
     if (detailLoading || !detail) {
       return (
         <PageContainer title="Članovi">
-          <button onClick={() => setSelectedId(null)} className="btn-ghost mb-4">← Natrag na popis</button>
+          <button onClick={closeMember} className="btn-ghost mb-4">← Natrag na popis</button>
           <p className="text-content-secondary">Učitavanje...</p>
         </PageContainer>
       );
@@ -106,10 +125,10 @@ export default function MembersList({ isAdmin, canManageMembership }) {
         isAdmin={isAdmin}
         canManageMembership={canManageMembership}
         lookups={lookups}
-        onBack={() => { setSelectedId(null); }}
-        onRoleChanged={() => { setSelectedId(null); load(); }}
+        onBack={closeMember}
+        onRoleChanged={() => { closeMember(); load(); }}
         onUpdated={(updated) => { setDetail(updated); load(); }}
-        onDeleted={() => { setSelectedId(null); load(); }}
+        onDeleted={() => { closeMember(); load(); }}
         setMessage={setMessage}
       />
     );
@@ -184,7 +203,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
               <tr><td colSpan={5} className="text-content-muted">Nema članova.</td></tr>
             )}
             {filtered.map((m) => (
-              <tr key={m.id} className="hover:bg-surface-overlay cursor-pointer" onClick={() => setSelectedId(m.id)}>
+              <tr key={m.id} className="hover:bg-surface-overlay cursor-pointer" onClick={() => openMember(m.id)}>
                 <td>{m.firstName} {m.lastName}</td>
                 <td>{m.ksetEmail || '-'}</td>
                 <td>{m.phone}</td>
@@ -203,7 +222,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
         )}
         {filtered.map((m) => (
           <Card key={m.id} className="!mb-0 cursor-pointer hover:bg-surface-overlay" >
-            <div onClick={() => setSelectedId(m.id)}>
+            <div onClick={() => openMember(m.id)}>
               <div className="font-medium mb-1">{m.firstName} {m.lastName}</div>
               <div className="text-sm text-content-secondary">{m.ksetEmail || m.privateEmail || '-'}</div>
               <div className="text-sm text-content-secondary">{m.phone}</div>
