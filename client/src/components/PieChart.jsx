@@ -23,7 +23,7 @@ function foldToMax(data, maxSlices) {
   if (maxSlices === Infinity || data.length <= maxSlices + 1) return data;
   const head = data.slice(0, maxSlices);
   const tailTotal = data.slice(maxSlices).reduce((sum, d) => sum + d.value, 0);
-  return [...head, { label: 'Ostalo', value: tailTotal }];
+  return [...head, { label: 'Ostalo', value: tailTotal, isOther: true }];
 }
 
 function polarToCartesian(cx, cy, r, angleDeg) {
@@ -40,7 +40,15 @@ function describeArc(cx, cy, r, startAngle, endAngle) {
 
 // `colorFor(label, index)` lets a chart pin specific categories to specific
 // hues (e.g. membership-level card colours) instead of default slot order.
-export default function PieChart({ title, data, colorFor, loading, maxSlices = DEFAULT_MAX_SLICES }) {
+export default function PieChart({
+  title,
+  data,
+  colorFor,
+  loading,
+  maxSlices = DEFAULT_MAX_SLICES,
+  wrapLabels = false,
+  showZeroValues = false,
+}) {
   const uid = useId();
   const [hovered, setHovered] = useState(null);
 
@@ -58,7 +66,7 @@ export default function PieChart({ title, data, colorFor, loading, maxSlices = D
     const fraction = total > 0 ? d.value / total : 0;
     angle += fraction * 360;
     const endAngle = angle;
-    const color = d.label === 'Ostalo' ? OTHER_COLOR : colorFor ? colorFor(d.label, i) : PALETTE[i % PALETTE.length];
+    const color = d.isOther ? OTHER_COLOR : colorFor ? colorFor(d.label, i) : PALETTE[i % PALETTE.length];
     return { ...d, startAngle, endAngle, fraction, color };
   });
 
@@ -68,13 +76,15 @@ export default function PieChart({ title, data, colorFor, loading, maxSlices = D
 
       {loading ? (
         <p className="text-sm text-content-muted">Učitavanje...</p>
-      ) : total === 0 ? (
+      ) : total === 0 && !showZeroValues ? (
         <p className="text-sm text-content-muted">Nema podataka.</p>
       ) : (
         <div className="flex flex-col sm:flex-row items-center gap-4">
-          <div className="relative shrink-0">
+          <div className="relative w-40 max-w-full shrink-0">
             <svg viewBox={`0 0 ${size} ${size}`} width={160} height={160} role="img" aria-label={title}>
-              {slices.length === 1 ? (
+              {total === 0 ? (
+                <circle cx={cx} cy={cy} r={r} fill="#414141" />
+              ) : slices.length === 1 ? (
                 <circle
                   cx={cx}
                   cy={cy}
@@ -109,7 +119,7 @@ export default function PieChart({ title, data, colorFor, loading, maxSlices = D
             </svg>
 
             {/* Hover readout - value leads, label follows */}
-            <div className="mt-1 text-center h-9">
+            <div className="mt-1 text-center min-h-9">
               {hovered !== null && (
                 <>
                   <div className="text-base font-semibold text-content-primary leading-tight">
@@ -118,7 +128,7 @@ export default function PieChart({ title, data, colorFor, loading, maxSlices = D
                       ({Math.round(slices[hovered].fraction * 100)}%)
                     </span>
                   </div>
-                  <div className="text-xs text-content-secondary truncate">{slices[hovered].label}</div>
+                  <div className={`text-xs text-content-secondary ${wrapLabels ? 'whitespace-normal [overflow-wrap:anywhere]' : 'truncate'}`}>{slices[hovered].label}</div>
                 </>
               )}
             </div>
@@ -128,17 +138,17 @@ export default function PieChart({ title, data, colorFor, loading, maxSlices = D
             {slices.map((s, i) => (
               <li
                 key={`${uid}-legend-${s.label}`}
-                className="flex items-center justify-between gap-2 text-xs rounded px-1.5 py-1 cursor-pointer"
+                className="flex items-start justify-between gap-2 text-xs rounded px-1.5 py-1 cursor-pointer"
                 style={{ backgroundColor: hovered === i ? 'rgba(255,255,255,0.06)' : 'transparent' }}
                 onPointerEnter={() => setHovered(i)}
                 onPointerLeave={() => setHovered(null)}
               >
-                <span className="flex items-center gap-1.5 min-w-0">
+                <span className="flex flex-1 items-start gap-1.5 min-w-0">
                   <span
-                    className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
+                    className="inline-block w-2.5 h-2.5 rounded-sm shrink-0 mt-0.5"
                     style={{ backgroundColor: s.color }}
                   />
-                  <span className="text-content-secondary truncate">{s.label}</span>
+                  <span className={`text-content-secondary ${wrapLabels ? 'min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]' : 'truncate'}`}>{s.label}</span>
                 </span>
                 <span className="text-content-primary font-medium shrink-0">{s.value}</span>
               </li>

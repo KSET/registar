@@ -71,12 +71,7 @@ async function canView(viewer, targetMemberId) {
       prisma.member.findUnique({ where: { id: viewer.memberId }, select: { managedSectionId: true } }),
       prisma.member.findUnique({ where: { id: targetMemberId }, select: { homeSectionId: true } }),
     ]);
-    if (!leader?.managedSectionId || !target) return false;
-    if (target.homeSectionId === leader.managedSectionId) return true;
-    const assoc = await prisma.memberSection.findFirst({
-      where: { memberId: targetMemberId, sectionId: leader.managedSectionId },
-    });
-    return Boolean(assoc);
+    return Boolean(leader?.managedSectionId && target);
   }
   return false;
 }

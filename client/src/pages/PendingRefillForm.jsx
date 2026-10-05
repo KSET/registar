@@ -3,7 +3,14 @@ import { authHeaders } from '../api/auth';
 import { useLookupData } from '../useLookupData';
 import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
-import { FIELD_LABELS, GENDER_OPTIONS, MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
+import {
+  FIELD_LABELS,
+  GENDER_OPTIONS,
+  MEMBERSHIP_LEVEL_OPTIONS,
+  DIET_TYPE_OPTIONS,
+  SHIRT_SIZE_OPTIONS,
+  REFERRAL_SOURCE_OPTIONS,
+} from '../constants';
 import { PageContainer, Card, Alert } from '../components/ui';
 import { TextField, SelectField, MultiCheckDropdown, CheckboxField, DateField } from '../components/Field';
 
@@ -34,6 +41,8 @@ function RefillField({ fieldKey, form, lookups, homeSectionId }) {
       return <SelectField {...common} label={label} required options={GENDER_OPTIONS} />;
     case 'membershipLevel':
       return <SelectField {...common} label={label} required options={MEMBERSHIP_LEVEL_OPTIONS} />;
+    case 'referralSource':
+      return <SelectField {...common} label={label} required options={REFERRAL_SOURCE_OPTIONS} />;
     case 'dietType':
       return <SelectField {...common} label={label} required options={DIET_TYPE_OPTIONS} />;
     case 'shirtSize':
@@ -183,7 +192,7 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
             <div className="mb-4">
               <label className="label">Potvrda o studiranju (PDF) <span className="text-brand-orange">*</span></label>
               <p className="text-xs text-content-muted mb-2">
-                <a href="https://issp.srce.hr/e-potvrda/student" target="_blank" rel="noopener noreferrer" className="text-brand-orange underline">
+                <a href="https://issp.srce.hr/e-potvrda" target="_blank" rel="noopener noreferrer" className="text-brand-orange underline">
                   Preuzmite potvrdu putem e-Građani
                 </a>
               </p>

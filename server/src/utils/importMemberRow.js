@@ -3,6 +3,8 @@
 // agnostic: callers pass in the current lookup tables and get back a
 // validated row - nothing here touches Prisma directly.
 const { isValidOib } = require('./oib');
+const { REFERRAL_SOURCE_OPTIONS } = require('./referralSources');
+const { canonicalSectionName } = require('./sectionNames');
 
 const REQUIRED_HEADERS = [
   'Ime i prezime', 'OIB', 'Datum rođenja', 'Datum učlanjenja',
@@ -14,21 +16,6 @@ const REQUIRED_HEADERS = [
   'Statut i drugi akti udruge', 'GDPR Privola', 'Kodeks Udruge',
   'Kodeks nulte tolerancije', 'Politika privatnosti',
 ];
-
-// "Bike" -> Biciklistička etc. - the section sheets are named after these
-// same short codes (sheet "_Bike" is the Biciklistička roster).
-const SECTION_ABBR = {
-  Bike: 'Biciklistička',
-  Disco: 'Disco',
-  Dramska: 'Dramska',
-  Foto: 'Foto',
-  Glazbena: 'Glazbena',
-  Media: 'Media',
-  Pi: 'Planinarska',
-  Comp: 'Računarska',
-  Tech: 'Tehnička',
-  Video: 'Video',
-};
 
 // Membership labels used by current and older workbook exports.
 const MEMBERSHIP_LEVEL_MAP = {
@@ -192,7 +179,7 @@ function parseMemberRow(row, { sectionByName, teamByName, drinkByName, facultyBy
   const effectivePrivateEmail = privateEmail || ksetEmail;
 
   const homeSectionAbbr = (row['Matična sekcija'] || '').toString().trim();
-  const homeSectionName = SECTION_ABBR[homeSectionAbbr] || homeSectionAbbr;
+  const homeSectionName = canonicalSectionName(homeSectionAbbr);
   const homeSectionId = sectionByName.get(homeSectionName);
   if (!homeSectionId) errors.push(`Nepoznata matična sekcija: "${homeSectionAbbr}".`);
 
@@ -212,6 +199,10 @@ function parseMemberRow(row, { sectionByName, teamByName, drinkByName, facultyBy
   if (unresolvedTeams.length > 0) errors.push(`Nepoznat tim: ${unresolvedTeams.join(', ')}`);
 
   const allergyNames = parseAllergies(row['Imate li kakve alergije u vezi pića ili hrane?']);
+  const referralSourceRaw = (row['Kako ste saznali za KSET?'] || '').toString().trim();
+  const referralSource = referralSourceRaw
+    ? REFERRAL_SOURCE_OPTIONS.includes(referralSourceRaw) ? referralSourceRaw : 'Ostalo'
+    : null;
 
   const acceptedDocuments = hasAcceptedDocuments(row);
   if (!acceptedDocuments) errors.push('Nisu prihvaćeni svi akti udruge.');
@@ -244,6 +235,7 @@ function parseMemberRow(row, { sectionByName, teamByName, drinkByName, facultyBy
       dietType,
       shirtSize,
       acceptedDocuments,
+      referralSource,
       appRole: 'CLAN',
       homeSectionId,
       homeSectionName,
@@ -256,7 +248,6 @@ function parseMemberRow(row, { sectionByName, teamByName, drinkByName, facultyBy
 
 module.exports = {
   REQUIRED_HEADERS,
-  SECTION_ABBR,
   MEMBERSHIP_LEVEL_MAP,
   parseMemberRow,
   toDateOnlyString,

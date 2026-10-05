@@ -6,7 +6,7 @@ import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
 import { PageContainer, Card, Alert } from '../components/ui';
 import { TextField, SelectField, MultiCheckDropdown, CheckboxField, DateField } from '../components/Field';
-import { GENDER_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
+import { GENDER_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS, REFERRAL_SOURCE_OPTIONS } from '../constants';
 
 const FACULTY_OTHER = 'OTHER';
 
@@ -47,6 +47,7 @@ export default function RegistrationForm({ email, onSubmitted }) {
       shirtSize: '',
       transportVolunteer: false,
       acceptedDocuments: false,
+      referralSource: '',
     },
     memberValidators
   );
@@ -103,6 +104,7 @@ export default function RegistrationForm({ email, onSubmitted }) {
       fd.append('shirtSize', values.shirtSize);
       fd.append('transportVolunteer', String(values.transportVolunteer));
       fd.append('acceptedDocuments', String(values.acceptedDocuments));
+      fd.append('referralSource', values.referralSource);
       if (isKset) fd.append('privateEmail', values.privateEmail);
 
       fd.append('facultyId', values.facultyId && values.facultyId !== FACULTY_OTHER ? String(parseInt(values.facultyId)) : '');
@@ -195,7 +197,7 @@ export default function RegistrationForm({ email, onSubmitted }) {
           <div className="mt-2">
             <label className="label">Potvrda o studiranju (PDF) <span className="text-brand-orange">*</span></label>
             <p className="text-xs text-content-muted mb-2">
-              <a href="https://issp.srce.hr/e-potvrda/student" target="_blank" rel="noopener noreferrer" className="text-brand-orange underline">
+              <a href="https://issp.srce.hr/e-potvrda" target="_blank" rel="noopener noreferrer" className="text-brand-orange underline">
                 Preuzmite potvrdu putem e-Građani
               </a>
             </p>
@@ -226,14 +228,21 @@ export default function RegistrationForm({ email, onSubmitted }) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <MultiCheckDropdown name="sectionIds" label="Pridružene sekcije"
-              options={lookups.sections.filter((section) => String(section.id) !== String(values.homeSectionId))}
+              options={lookups.sections.filter((section) =>
+                String(section.id) !== String(values.homeSectionId) && section.name === 'Media'
+              )}
               value={values.sectionIds} onChange={handleChange} onBlur={handleBlur} error={showError('sectionIds')} />
             <MultiCheckDropdown name="teamIds" label="Timovi"
               options={lookups.teams} value={values.teamIds} onChange={handleChange} onBlur={handleBlur} error={showError('teamIds')} />
           </div>
+          <p className="mb-4 -mt-2 text-xs text-content-muted">
+            Plavi članovi mogu odabrati Mediju kao pridruženu sekciju.
+          </p>
         </Card>
 
         <Card title="Ostalo">
+          <SelectField name="referralSource" label="Kako ste saznali za KSET?" required options={REFERRAL_SOURCE_OPTIONS}
+            value={values.referralSource} onChange={handleChange} onBlur={handleBlur} error={showError('referralSource')} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <SelectField name="dietType" label="Tip prehrane" required options={DIET_TYPE_OPTIONS}
               value={values.dietType} onChange={handleChange} onBlur={handleBlur} error={showError('dietType')} />

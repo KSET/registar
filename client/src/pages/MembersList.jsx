@@ -20,6 +20,40 @@ const ROLE_LABELS = {
 };
 const COUNCIL_FILTER = 'savjet';
 const FACULTY_OTHER = 'OTHER';
+const DEFAULT_VISIBLE_COLUMNS = [
+  'cardNumber',
+  'ksetEmail',
+  'privateEmail',
+  'phone',
+  'section',
+  'updated',
+];
+const MEMBER_COLUMNS = [
+  { key: 'name', label: 'Ime i prezime', sortKey: 'name' },
+  { key: 'cardNumber', label: 'Šifra iskaznice', sortKey: 'cardNumber' },
+  { key: 'ksetEmail', label: 'KSET e-mail', sortKey: 'ksetEmail' },
+  { key: 'privateEmail', label: 'Privatni e-mail', sortKey: 'privateEmail' },
+  { key: 'phone', label: 'Telefon', sortKey: 'phone' },
+  { key: 'section', label: 'Matična sekcija', sortKey: 'section' },
+  { key: 'updated', label: 'Ažurirao formu ove akademske godine', sortKey: 'updated' },
+  { key: 'faculty', label: 'Fakultet', sortKey: 'faculty' },
+  { key: 'membershipLevel', label: 'Boja iskaznice', sortKey: 'membershipLevel' },
+  { key: 'birthYear', label: 'Godina rođenja', sortKey: 'birthYear' },
+];
+const OPTIONAL_MEMBER_COLUMNS = MEMBER_COLUMNS.filter(({ key }) => key !== 'name');
+
+function readSavedColumns() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('members-table-columns-v1') || 'null');
+    if (Array.isArray(saved)) {
+      const valid = saved.filter((key) => OPTIONAL_MEMBER_COLUMNS.some((column) => column.key === key));
+      return [...new Set(valid)];
+    }
+  } catch (error) {
+    console.warn('Nije moguće učitati spremljene stupce tablice članova.', error);
+  }
+  return DEFAULT_VISIBLE_COLUMNS;
+}
 
 function toDateInput(d) {
   return d ? d.split('T')[0] : '';
@@ -29,6 +63,64 @@ function facultyDisplay(m) {
   return m.faculty?.name || m.facultyOther || '-';
 }
 
+function updatedThisAcademicYear(certificateApprovedAt) {
+  if (!certificateApprovedAt) return false;
+
+  const approvedAt = new Date(certificateApprovedAt);
+  if (Number.isNaN(approvedAt.getTime())) return false;
+
+  const now = new Date();
+  const academicYearStart = new Date(
+    now.getFullYear() - (now.getMonth() < 9 ? 1 : 0),
+    9,
+    1
+  );
+  return approvedAt >= academicYearStart;
+}
+
+function SortableHeader({ column, label, sortBy, sortDirection, onSort }) {
+  const active = sortBy === column;
+  return (
+    <th aria-sort={active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button
+        type="button"
+      className="flex w-full items-start gap-1 text-left text-xs whitespace-normal break-words hover:text-content-primary"
+        onClick={() => onSort(column)}
+      >
+        {label}
+      <span aria-hidden="true" className="shrink-0 text-content-muted">
+          {active ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+function CopyableValue({ value, label, copyKey, feedback, onCopy }) {
+  if (!value) return '-';
+
+  return (
+    <>
+      <button
+        type="button"
+        className="text-left hover:text-brand-orange focus:outline-none focus:underline"
+        title={`Kliknite za kopiranje: ${label}`}
+        onClick={(event) => onCopy(event, value, copyKey, label)}
+      >
+        {value}
+      </button>
+      {feedback?.key === copyKey && (
+        <span
+          className={`block text-xs ${feedback.status === 'copied' ? 'text-state-success' : 'text-state-error'}`}
+          role="status"
+        >
+          {feedback.status === 'copied' ? 'Kopirano' : 'Kopiranje nije uspjelo'}
+        </span>
+      )}
+    </>
+  );
+}
+
 export default function MembersList({ isAdmin, canManageMembership }) {
   const lookups = useLookupData();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -36,6 +128,12 @@ export default function MembersList({ isAdmin, canManageMembership }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sectionFilter, setSectionFilter] = useState(null); // null = svi
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDirection, setSortDirection] = useState('asc');
+  const [facultyFilter, setFacultyFilter] = useState('');
+  const [membershipFilter, setMembershipFilter] = useState('');
+  const [birthYearFilter, setBirthYearFilter] = useState('');
+  const [visibleColumns, setVisibleColumns] = useState(readSavedColumns);
   const selectedMemberParam = searchParams.get('member');
   const selectedId = selectedMemberParam && /^[1-9]\d*$/.test(selectedMemberParam)
     ? Number(selectedMemberParam)
@@ -43,6 +141,9 @@ export default function MembersList({ isAdmin, canManageMembership }) {
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   const openMember = (id) => {
     setSearchParams((params) => {
@@ -56,6 +157,73 @@ export default function MembersList({ isAdmin, canManageMembership }) {
       params.delete('member');
       return params;
     }, { replace: true });
+  };
+
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      setSortDirection((direction) => (direction === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const toggleColumn = (column) => {
+    setVisibleColumns((current) => {
+      const next = current.includes(column)
+        ? current.filter((key) => key !== column)
+        : [...current, column];
+      try {
+        localStorage.setItem('members-table-columns-v1', JSON.stringify(next));
+      } catch (error) {
+        console.warn('Nije moguće spremiti odabrane stupce tablice članova.', error);
+      }
+      return next;
+    });
+  };
+
+  const handleExport = async () => {
+    setExportError('');
+    setExporting(true);
+    try {
+      const response = await fetch('/api/members/export', { headers: authHeaders() });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Izvoz članova nije uspio.');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${isAdmin ? 'kset-clanovi' : 'kset-sekcija-clanovi'}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setExportError(error.message || 'Izvoz članova nije uspio.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const openMemberUnlessTextSelected = (id) => {
+    if (window.getSelection()?.toString()) return;
+    openMember(id);
+  };
+
+  const copyValue = async (event, value, key, label) => {
+    event.stopPropagation();
+    if (!value) return;
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyFeedback({ key, status: 'copied' });
+    } catch (error) {
+      console.error(`Kopiranje polja "${label}" nije uspjelo.`, error);
+      setCopyFeedback({ key, status: 'error' });
+    }
   };
 
   useEffect(() => {
@@ -98,13 +266,63 @@ export default function MembersList({ isAdmin, canManageMembership }) {
     const matchesSection =
       sectionFilter === null ||
       (sectionFilter === COUNCIL_FILTER ? m.isCouncilMember : m.homeSection?.id === sectionFilter);
-    return matchesSearch && matchesSection;
+    return matchesSearch
+      && matchesSection
+      && (!facultyFilter || (m.facultyName || '').toLocaleLowerCase('hr').includes(facultyFilter.trim().toLocaleLowerCase('hr')))
+      && (!membershipFilter || m.membershipLevel === membershipFilter)
+      && (!birthYearFilter || String(m.birthYear) === birthYearFilter);
   });
 
-  const sectionCounts = Object.fromEntries(
-    lookups.sections.map((s) => [s.id, members.filter((m) => m.homeSection?.id === s.id).length])
+  const sortedMembers = [...filtered].sort((a, b) => {
+    const getValue = (member) => {
+      switch (sortBy) {
+        case 'name': return `${member.firstName} ${member.lastName}`;
+        case 'section': return member.homeSection?.name || '';
+        case 'updated': return updatedThisAcademicYear(member.certificateApprovedAt) ? 'Da' : 'Ne';
+        case 'faculty': return member.facultyName || '';
+        case 'membershipLevel': return MEMBERSHIP_LEVEL_OPTIONS.find((option) => option.value === member.membershipLevel)?.label || '';
+        case 'birthYear': return member.birthYear || '';
+        default: return member[sortBy] || '';
+      }
+    };
+    const comparison = String(getValue(a)).localeCompare(String(getValue(b)), 'hr', {
+      sensitivity: 'base',
+      numeric: true,
+    });
+    return sortDirection === 'asc' ? comparison : -comparison;
+  });
+  const availableFaculties = [...new Set(members.map((member) => member.facultyName).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'hr', { sensitivity: 'base' }));
+  const availableBirthYears = [...new Set(members.map((member) => member.birthYear).filter(Boolean))]
+    .sort((a, b) => b - a);
+  const columnsToShow = isAdmin ? DEFAULT_VISIBLE_COLUMNS : visibleColumns;
+  const tableColumns = MEMBER_COLUMNS.filter(
+    ({ key }) => key === 'name' || columnsToShow.includes(key)
   );
-  const councilCount = members.filter((m) => m.isCouncilMember).length;
+  const renderColumnValue = (member, column) => {
+    switch (column.key) {
+      case 'name': return `${member.firstName} ${member.lastName}`;
+      case 'cardNumber': return member.cardNumber || '-';
+      case 'ksetEmail':
+      case 'privateEmail':
+      case 'phone':
+        return (
+          <CopyableValue
+            value={member[column.key]}
+            label={column.label}
+            copyKey={`${member.id}-${column.key}`}
+            feedback={copyFeedback}
+            onCopy={copyValue}
+          />
+        );
+      case 'section': return member.homeSection?.name || '-';
+      case 'updated': return updatedThisAcademicYear(member.certificateApprovedAt) ? 'Da' : 'Ne';
+      case 'faculty': return member.facultyName || '-';
+      case 'membershipLevel': return <MembershipLabel value={member.membershipLevel} />;
+      case 'birthYear': return member.birthYear || '-';
+      default: return '-';
+    }
+  };
 
   if (loading) {
     return <PageContainer title="Članovi"><p className="text-content-secondary">Učitavanje...</p></PageContainer>;
@@ -135,9 +353,17 @@ export default function MembersList({ isAdmin, canManageMembership }) {
   }
 
   return (
-    <PageContainer title="Članovi" maxWidth="max-w-5xl">
+    <PageContainer title="Članovi" maxWidth="max-w-full">
       {message && <Alert kind="success">{message}</Alert>}
+      {exportError && <Alert kind="error">{exportError}</Alert>}
 
+      {(isAdmin || canManageMembership) && (
+        <div className="mb-4 flex justify-end">
+          <button type="button" className="btn-primary" onClick={handleExport} disabled={exporting}>
+            {exporting ? 'Izvozim...' : isAdmin ? 'Izvezi sve u Excel' : 'Izvezi svoju sekciju u Excel'}
+          </button>
+        </div>
+      )}
       <div className="mb-4 flex flex-wrap gap-2">
         <button
           type="button"
@@ -148,7 +374,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
               : 'border-surface-border text-content-secondary hover:text-content-primary hover:bg-surface-overlay'
           }`}
         >
-          Sve članovi ({members.length})
+          Sve članovi
         </button>
         {lookups.sections.map((s) => (
           <button
@@ -161,7 +387,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
                 : 'border-surface-border text-content-secondary hover:text-content-primary hover:bg-surface-overlay'
             }`}
           >
-            {s.name} ({sectionCounts[s.id] || 0})
+            {s.name}
           </button>
         ))}
         <button
@@ -173,7 +399,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
               : 'border-surface-border text-content-secondary hover:text-content-primary hover:bg-surface-overlay'
           }`}
         >
-          Savjet ({councilCount})
+          Savjet
         </button>
       </div>
 
@@ -186,29 +412,95 @@ export default function MembersList({ isAdmin, canManageMembership }) {
         />
       </div>
 
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <label className="text-xs text-content-secondary">
+          Fakultet
+          <input
+            className="input mt-1 block min-w-44"
+            list="member-faculty-options"
+            placeholder="Svi fakulteti"
+            value={facultyFilter}
+            onChange={(event) => setFacultyFilter(event.target.value)}
+          />
+          <datalist id="member-faculty-options">
+            {availableFaculties.map((faculty) => <option key={faculty} value={faculty} />)}
+          </datalist>
+        </label>
+        <label className="text-xs text-content-secondary">
+          Boja iskaznice
+          <select className="input mt-1 block min-w-40" value={membershipFilter} onChange={(event) => setMembershipFilter(event.target.value)}>
+            <option value="">Sve boje</option>
+            {MEMBERSHIP_LEVEL_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label className="text-xs text-content-secondary">
+          Godina rođenja
+          <select className="input mt-1 block min-w-40" value={birthYearFilter} onChange={(event) => setBirthYearFilter(event.target.value)}>
+            <option value="">Sve godine</option>
+            {availableBirthYears.map((year) => <option key={year} value={year}>{year}</option>)}
+          </select>
+        </label>
+        {(facultyFilter || membershipFilter || birthYearFilter) && (
+          <button
+            type="button"
+            className="btn-ghost text-xs"
+            onClick={() => {
+              setFacultyFilter('');
+              setMembershipFilter('');
+              setBirthYearFilter('');
+            }}
+          >
+            Očisti filtre
+          </button>
+        )}
+      </div>
+
+      {!isAdmin && canManageMembership && (
+        <details className="mb-4 rounded-lg border border-surface-border p-3">
+          <summary className="cursor-pointer text-sm font-medium">Odaberi stupce</summary>
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+            {OPTIONAL_MEMBER_COLUMNS.map(({ key, label }) => (
+              <label key={key} className="flex items-center gap-2 text-sm text-content-secondary">
+                <input
+                  type="checkbox"
+                  checked={visibleColumns.includes(key)}
+                  onChange={() => toggleColumn(key)}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </details>
+      )}
+
       {/* Desktop */}
       <Card className="!p-0 overflow-hidden hidden md:block">
-        <table className="table-base">
+        <table className="table-base w-full table-fixed text-xs">
           <thead>
             <tr>
-              <th>Ime i prezime</th>
-              <th>KSET e-mail</th>
-              <th>Telefon</th>
-              <th>Matična sekcija</th>
-              <th></th>
+              {tableColumns.map((column) => (
+                <SortableHeader
+                  key={column.key}
+                  column={column.key}
+                  label={column.label}
+                  {...{ sortBy, sortDirection, onSort: handleSort }}
+                />
+              ))}
+              <th aria-label="Detalji" className="!px-1.5"></th>
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && (
-              <tr><td colSpan={5} className="text-content-muted">Nema članova.</td></tr>
+            {sortedMembers.length === 0 && (
+              <tr><td colSpan={tableColumns.length + 1} className="!px-1.5 text-content-muted">Nema članova.</td></tr>
             )}
-            {filtered.map((m) => (
-              <tr key={m.id} className="hover:bg-surface-overlay cursor-pointer" onClick={() => openMember(m.id)}>
-                <td>{m.firstName} {m.lastName}</td>
-                <td>{m.ksetEmail || '-'}</td>
-                <td>{m.phone}</td>
-                <td>{m.homeSection?.name || '-'}</td>
-                <td className="text-brand-orange text-sm">Detalji →</td>
+            {sortedMembers.map((m) => (
+              <tr key={m.id} className="hover:bg-surface-overlay cursor-pointer" onClick={() => openMemberUnlessTextSelected(m.id)}>
+                {tableColumns.map((column) => (
+                  <td key={column.key} className="!px-1.5 break-words [overflow-wrap:anywhere]">
+                    {renderColumnValue(m, column)}
+                  </td>
+                ))}
+                <td className="!px-1.5 break-words text-brand-orange">Detalji →</td>
               </tr>
             ))}
           </tbody>
@@ -217,16 +509,19 @@ export default function MembersList({ isAdmin, canManageMembership }) {
 
       {/* Mobile */}
       <div className="md:hidden space-y-3">
-        {filtered.length === 0 && (
+        {sortedMembers.length === 0 && (
           <Card><p className="text-content-muted">Nema članova.</p></Card>
         )}
-        {filtered.map((m) => (
+        {sortedMembers.map((m) => (
           <Card key={m.id} className="!mb-0 cursor-pointer hover:bg-surface-overlay" >
-            <div onClick={() => openMember(m.id)}>
+            <div onClick={() => openMemberUnlessTextSelected(m.id)}>
               <div className="font-medium mb-1">{m.firstName} {m.lastName}</div>
-              <div className="text-sm text-content-secondary">{m.ksetEmail || m.privateEmail || '-'}</div>
-              <div className="text-sm text-content-secondary">{m.phone}</div>
-              <div className="text-sm text-content-muted mt-1">{m.homeSection?.name || '-'}</div>
+              {tableColumns.filter(({ key }) => key !== 'name').map((column) => (
+                <div key={column.key} className="text-sm text-content-secondary mt-1">
+                  <span className="text-content-muted">{column.label}: </span>
+                  {renderColumnValue(m, column)}
+                </div>
+              ))}
               <div className="text-brand-orange text-sm mt-2">Detalji →</div>
             </div>
           </Card>
@@ -407,6 +702,7 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
             <InfoRow label="Telefon" value={member.phone} />
             <InfoRow label="Privatni e-mail" value={member.privateEmail} />
             <InfoRow label="KSET e-mail" value={member.ksetEmail} />
+            <InfoRow label="Kako ste saznali za KSET?" value={member.referralSource} />
           </Card>
 
           <Card title="Članstvo">
@@ -444,7 +740,7 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
         </>
       )}
 
-      {canManageMembership && !isLimited && !editing && (
+      {canManageMembership && member.canManageMembership && !isLimited && !editing && (
         <MembershipManager
           member={member}
           onSaved={(changes) => {
@@ -573,9 +869,11 @@ function MemberEditForm({ member, lookups, submitting, setSubmitting, setError, 
     { value: FACULTY_OTHER, label: 'Ostalo (upišite)' },
   ];
 
-  // Admin edits everything the form manages except acceptedDocuments - that's
-  // a historical consent record, not something re-confirmed on someone's behalf.
-  const EDITABLE_FIELDS = Object.keys(memberValidators).filter((f) => f !== 'acceptedDocuments');
+  // Consent and referral source are historical records and are not editable in
+  // this form, so their validators must not block unrelated profile changes.
+  const EDITABLE_FIELDS = Object.keys(memberValidators).filter(
+    (field) => !['acceptedDocuments', 'referralSource'].includes(field)
+  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();

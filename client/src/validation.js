@@ -67,6 +67,7 @@ export const memberValidators = {
   drinkIds: requiredArray('Pića', 1),
   transportVolunteer: (v) => (typeof v === 'boolean' ? null : 'Odaberite mogućnost prijevoza.'),
   acceptedDocuments: (v) => (v ? null : 'Morate prihvatiti akte i dokumente udruge.'),
+  referralSource: required('Kako ste saznali za KSET?'),
 };
 
 export function validateForm(form, validators, fields) {

@@ -21,52 +21,7 @@ export function TextField({ name, label, value, onChange, onBlur, error, type = 
   );
 }
 
-function isoToDisplay(iso) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
-  return m ? `${Number(m[3])}. ${Number(m[2])}. ${m[1]}.` : '';
-}
-
-function displayToIso(display) {
-  const m = /^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})\.?$/.exec(display);
-  if (!m) return '';
-  const [, d, mo, y] = m;
-  // Reject calendar-invalid dates (e.g. 31/02/2024) rather than silently
-  // passing them through to the server as something else via Date parsing.
-  const asDate = new Date(Number(y), Number(mo) - 1, Number(d));
-  if (asDate.getFullYear() !== Number(y) || asDate.getMonth() + 1 !== Number(mo) || asDate.getDate() !== Number(d)) {
-    return '';
-  }
-  return `${y}-${String(Number(mo)).padStart(2, '0')}-${String(Number(d)).padStart(2, '0')}`;
-}
-
-// Native date inputs follow the OS locale; this keeps an explicit Croatian
-// display while storing the same yyyy-mm-dd value used by the API.
 export function DateField({ name, label, value, onChange, onBlur, error, required }) {
-  const [text, setText] = useState(isoToDisplay(value));
-  const inputRef = useRef(null);
-
-  const setInputValidity = (candidate) => {
-    if (!inputRef.current) return;
-    const invalidDate = candidate.trim() !== '' && !displayToIso(candidate);
-    inputRef.current.setCustomValidity(
-      invalidDate ? 'Unesite ispravan datum u formatu d. m. gggg.' : ''
-    );
-  };
-
-  const handleInput = (e) => {
-    const nextText = e.target.value;
-    setText(nextText);
-    setInputValidity(nextText);
-    onChange(name, displayToIso(nextText));
-  };
-
-  const handleFieldBlur = () => {
-    const parsedDate = displayToIso(text);
-    if (parsedDate) setText(isoToDisplay(parsedDate));
-    setInputValidity(text);
-    onBlur(name);
-  };
-
   return (
     <div className="mb-4 w-full min-w-0">
       <label className="label" htmlFor={name}>
@@ -74,16 +29,12 @@ export function DateField({ name, label, value, onChange, onBlur, error, require
       </label>
       <input
         id={name}
-        ref={inputRef}
         name={name}
-        type="text"
-        inputMode="numeric"
-        placeholder="d. m. gggg."
-        maxLength={16}
+        type="date"
         required={required}
-        value={text}
-        onChange={handleInput}
-        onBlur={handleFieldBlur}
+        value={value ?? ''}
+        onChange={(e) => onChange(name, e.target.value)}
+        onBlur={() => onBlur(name)}
         className={`input block w-full min-w-0 ${error ? 'input-error' : ''}`}
       />
       {error && <p className="field-error">{error}</p>}

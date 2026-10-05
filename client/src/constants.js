@@ -32,6 +32,7 @@ export const FIELD_ORDER = [
   'allergyIds',
   'transportVolunteer',
   'acceptedDocuments',
+  'referralSource',
 ];
 
 // Vraća indeks polja u kanonskom redoslijedu; nepoznata polja idu na kraj.
@@ -68,7 +69,19 @@ export const FIELD_LABELS = {
   dietType: 'Tip prehrane',
   shirtSize: 'Veličina majice',
   acceptedDocuments: 'Prihvaćanje akata',
+  referralSource: 'Kako ste saznali za KSET?',
 };
+
+export const REFERRAL_SOURCE_OPTIONS = [
+  { value: 'Putem Instagrama', label: 'Putem Instagrama' },
+  { value: 'Putem Facebooka', label: 'Putem Facebooka' },
+  { value: 'Putem YouTubea', label: 'Putem YouTubea' },
+  { value: 'Putem Fakulteta', label: 'Putem Fakulteta' },
+  { value: 'Putem prijatelja/ice koji/a je član/ica KSET-a', label: 'Putem prijatelja/ice koji/a je član/ica KSET-a' },
+  { value: 'Putem prijatelja/ice koji/a nije član/ica KSET-a', label: 'Putem prijatelja/ice koji/a nije član/ica KSET-a' },
+  { value: 'Putem događaja koji organizira KSET (koncert, slušaonica, predstava, Brucošijada, Job Fair i sl.)', label: 'Putem događaja koji organizira KSET (koncert, slušaonica, predstava, Brucošijada, Job Fair i sl.)' },
+  { value: 'Ostalo', label: 'Ostalo' },
+];
 
 export const GENDER_OPTIONS = [
   { value: 'M', label: 'Muški' },

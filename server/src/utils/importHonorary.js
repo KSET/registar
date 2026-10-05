@@ -2,29 +2,31 @@
 // tracked by name only (Prezime / Ime columns). `existingNames` is a Set of
 // "firstName|||lastName" (lowercased) already in the DB, used to skip exact
 // re-imports if this is run more than once against overlapping data.
-const XLSX = require('xlsx');
+const { loadWorkbook, cellValue } = require('./excelWorkbook');
 
 function nameKey(firstName, lastName) {
   return `${firstName.toLowerCase()}|||${lastName.toLowerCase()}`;
 }
 
-function parseHonoraryBuffer(buffer, existingNames) {
-  const wb = XLSX.read(buffer, { type: 'buffer' });
-  if (!wb.SheetNames.includes('C')) {
+async function parseHonoraryBuffer(buffer, existingNames) {
+  const workbook = await loadWorkbook(buffer);
+  const worksheet = workbook.getWorksheet('C');
+  if (!worksheet) {
     return { totalRows: 0, valid: [], duplicateSkipped: 0 };
   }
-  const ws = wb.Sheets['C'];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-  const dataRows = rows
-    .slice(1)
-    .filter((r) => (r[0] && r[0].toString().trim()) || (r[1] && r[1].toString().trim()));
+  const dataRows = [];
+  for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
+    const row = worksheet.getRow(rowNum);
+    const lastName = String(cellValue(row.getCell(1).value) || '').trim();
+    const firstName = String(cellValue(row.getCell(2).value) || '').trim();
+    if (lastName || firstName) dataRows.push([lastName, firstName]);
+  }
 
   const result = { totalRows: dataRows.length, valid: [], duplicateSkipped: 0 };
   const seenInBatch = new Set();
 
   for (const r of dataRows) {
-    const lastName = (r[0] || '').toString().trim();
-    const firstName = (r[1] || '').toString().trim();
+    const [lastName, firstName] = r;
     if (!firstName || !lastName) continue;
 
     const key = nameKey(firstName, lastName);

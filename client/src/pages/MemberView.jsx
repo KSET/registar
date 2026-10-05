@@ -28,9 +28,9 @@ function facultyDisplay(member) {
   return member.faculty?.name || member.facultyOther || '-';
 }
 
-function InfoRow({ label, value, children }) {
+function InfoRow({ label, value, children, border = true, padding = 'py-2', afterBorder = '' }) {
   return (
-    <div className="flex justify-between gap-4 py-2 border-b border-surface-border last:border-0">
+    <div className={`flex justify-between gap-4 ${padding} ${border ? `border-b border-surface-border last:border-0 ${afterBorder}` : ''}`}>
       <span className="text-content-secondary text-sm">{label}</span>
       <span className="text-content-primary text-sm text-right min-w-0 break-words">{children ?? value ?? '-'}</span>
     </div>
@@ -251,6 +251,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
                 </span>
               )}
             </InfoRow>
+            <InfoRow label="Kako ste saznali za KSET?" value={member.referralSource} />
           </Card>
 
           <Card title="Članstvo">
@@ -289,7 +290,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <InfoRow label="Alergije" value={member.allergies.map((a) => a.allergy.name).join(', ') || '-'} />
             <InfoRow label="Veličina majice" value={member.shirtSize} />
             <InfoRow label="Kombi sekcija" value={member.transportVolunteer ? 'Da' : 'Ne'} />
-            <InfoRow label="Discord korisnički ID" value={member.discordId || 'Nije povezan'} />
+            <InfoRow label="Discord korisnički ID" value={member.discordId || 'Nije povezan'} padding="py-4" afterBorder="mb-4" />
           </Card>
           <Card title="Potvrda o studiranju">
             {certMsg && <Alert kind="success">{certMsg}</Alert>}
@@ -309,7 +310,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
                   Učitajte potvrdu o studiranju (PDF, max 5 MB). Ide voditelju na odobrenje.
                 </p>
                 <p className="text-xs text-content-muted -mt-2">
-                  <a href="https://issp.srce.hr/e-potvrda/student" target="_blank" rel="noopener noreferrer" className="text-brand-orange underline">
+                  <a href="https://issp.srce.hr/e-potvrda" target="_blank" rel="noopener noreferrer" className="text-brand-orange underline">
                     Preuzmite potvrdu putem e-Građani
                   </a>
                 </p>
@@ -400,7 +401,9 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <div>Matična sekcija: {member.homeSection?.name}</div>
           </div>
 
-          <InfoRow label="Razina članstva"><MembershipLabel value={member.membershipLevel} /></InfoRow>
+          <InfoRow label="Razina članstva" padding="py-4" afterBorder="mb-4">
+            <MembershipLabel value={member.membershipLevel} />
+          </InfoRow>
 
           {member.membershipLevel === 'PUNOPRAVNO' && (
             <DateField name="fullMemberSince" label="Datum postanka punopravnim članom"
@@ -409,16 +412,34 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <MultiCheckDropdown name="sectionIds" label="Pridružene sekcije"
-              options={lookups.sections.filter((section) => section.id !== member.homeSectionId)}
+              options={lookups.sections.filter((section) =>
+                section.id !== member.homeSectionId
+                && (
+                  member.membershipLevel !== 'PRIDRUZENO'
+                  || section.name === 'Media'
+                  || values.sectionIds.includes(section.id)
+                )
+              )}
               value={values.sectionIds} onChange={handleChange} onBlur={handleBlur} error={showError('sectionIds')} />
             <MultiCheckDropdown name="teamIds" label="Timovi"
               options={lookups.teams} value={values.teamIds} onChange={handleChange} onBlur={handleBlur} error={showError('teamIds')} />
           </div>
+          {member.membershipLevel === 'PRIDRUZENO' && (
+            <p className="mb-4 -mt-2 text-xs text-content-muted">
+              Plavi članovi mogu odabrati Mediju kao pridruženu sekciju.
+            </p>
+          )}
         </Card>
 
         <Card title="Ostalo">
+          <InfoRow label="Kako ste saznali za KSET?" value={member.referralSource} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-            <InfoRow label="Discord korisnički ID" value={member.discordId || 'Nije povezan'} />
+            <div className="mb-4 w-full min-w-0 md:col-span-2">
+              <span className="label block">Discord korisnički ID</span>
+              <div className="w-full rounded-md border border-surface-border bg-surface-overlay px-3 py-2 text-sm text-content-secondary font-mono break-all select-text">
+                {member.discordId || 'Nije povezan'}
+              </div>
+            </div>
             <SelectField name="dietType" label="Tip prehrane" required options={DIET_TYPE_OPTIONS}
               value={values.dietType} onChange={handleChange} onBlur={handleBlur} error={showError('dietType')} />
             <SelectField name="shirtSize" label="Veličina majice" required options={SHIRT_SIZE_OPTIONS}

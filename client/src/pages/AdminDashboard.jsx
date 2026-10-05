@@ -117,6 +117,14 @@ export default function AdminDashboard() {
           data={stats ? relabel(stats.byDiet, DIET_LABELS) : []}
           loading={loading}
         />
+        <PieChart
+          title="Kako su članovi saznali za KSET?"
+          data={stats?.byReferralSource || []}
+          loading={loading}
+          maxSlices={Infinity}
+          wrapLabels
+          showZeroValues
+        />
       </div>
     </PageContainer>
   );

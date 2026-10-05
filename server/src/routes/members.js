@@ -6,6 +6,8 @@ const { logAction, logError } = require('../utils/auditLog');
 const { parsePositiveIntParam, validateIdArray, checkFieldLength } = require('../utils/requestValidation');
 const { isEmailTaken } = require('../utils/emailUnique');
 const { deleteCertificate } = require('./uploads');
+const { REFERRAL_SOURCE_OPTIONS } = require('../utils/referralSources');
+const { createMembersWorkbook } = require('../utils/memberExport');
 
 const router = express.Router();
 
@@ -175,9 +177,31 @@ router.patch('/me', authenticateToken, async (req, res) => {
       if (new Set(result.ids).size !== result.ids.length) {
         return res.status(400).json({ error: 'Pridružene sekcije sadrže duplikate.' });
       }
-      const currentMember = await prisma.member.findUnique({ where: { id: memberId }, select: { homeSectionId: true } });
+      const currentMember = await prisma.member.findUnique({
+        where: { id: memberId },
+        select: {
+          homeSectionId: true,
+          membershipLevel: true,
+          sections: { select: { sectionId: true } },
+        },
+      });
       if (currentMember && result.ids.includes(currentMember.homeSectionId)) {
         return res.status(400).json({ error: 'Matična sekcija ne može biti i pridružena sekcija.' });
+      }
+      if (currentMember?.membershipLevel === 'PRIDRUZENO') {
+        const existingSectionIds = new Set(currentMember.sections.map((section) => section.sectionId));
+        const addedSectionIds = result.ids.filter((id) => !existingSectionIds.has(id));
+        if (addedSectionIds.length > 0) {
+          const mediaSection = await prisma.section.findUnique({
+            where: { name: 'Media' },
+            select: { id: true },
+          });
+          if (!mediaSection || addedSectionIds.some((id) => id !== mediaSection.id)) {
+            return res.status(400).json({
+              error: 'Plavi članovi mogu odabrati samo Mediju kao novu pridruženu sekciju.',
+            });
+          }
+        }
       }
       relationUpdates.sections = {
         deleteMany: {},
@@ -282,8 +306,6 @@ router.patch('/:id/management', authenticateToken, verifyCurrentRole, async (req
       const lengthError = checkFieldLength('cardNumber', cardNumber);
       if (lengthError) return res.status(400).json({ error: lengthError });
       if (cardNumber) {
-        const owner = await prisma.member.findFirst({ where: { cardNumber, id: { not: targetId } } });
-        if (owner) return res.status(409).json({ error: 'Ta šifra iskaznice je već u upotrebi.' });
         data.cardNumber = cardNumber;
       } else {
         data.cardNumber = null;
@@ -303,19 +325,6 @@ router.patch('/:id/management', authenticateToken, verifyCurrentRole, async (req
   }
 });
 
-function toLimited(m) {
-  return {
-    id: m.id,
-    firstName: m.firstName,
-    lastName: m.lastName,
-    ksetEmail: m.ksetEmail,
-    privateEmail: m.privateEmail,
-    phone: m.phone,
-    homeSection: m.homeSection,
-    limited: true,
-  };
-}
-
 // Slim by design: the list view only ever renders name/email/phone/section,
 // so that's all this returns - full PII (OIB, address, diet, allergies...)
 // is only fetched per-member via GET /:id when someone actually opens a
@@ -325,9 +334,15 @@ const LIST_SELECT = {
   id: true,
   firstName: true,
   lastName: true,
+  dateOfBirth: true,
   ksetEmail: true,
   privateEmail: true,
+  cardNumber: true,
+  membershipLevel: true,
+  certificateApprovedAt: true,
   phone: true,
+  faculty: { select: { name: true } },
+  facultyOther: true,
   homeSectionId: true,
   homeSection: { select: { id: true, name: true } },
   sections: { select: { sectionId: true } },
@@ -339,14 +354,81 @@ function toListItem(m, limited) {
     id: m.id,
     firstName: m.firstName,
     lastName: m.lastName,
+    birthYear: m.dateOfBirth?.getUTCFullYear() ?? null,
     ksetEmail: m.ksetEmail,
     privateEmail: m.privateEmail,
+    cardNumber: m.cardNumber,
+    membershipLevel: m.membershipLevel,
+    certificateApprovedAt: m.certificateApprovedAt,
     phone: m.phone,
+    facultyName: m.faculty?.name || m.facultyOther || '',
     homeSection: m.homeSection,
     isCouncilMember: m.appRole === 'VODITELJ_SEKCIJE' || m.appRole === 'ADMINISTRATOR',
     limited,
   };
 }
+
+router.get('/export', authenticateToken, verifyCurrentRole, async (req, res) => {
+  try {
+    const { appRole, memberId, managedSectionId } = req.user;
+    if (appRole !== 'ADMINISTRATOR' && appRole !== 'VODITELJ_SEKCIJE') {
+      return res.status(403).json({ error: 'Nemate ovlasti.' });
+    }
+
+    if (appRole === 'VODITELJ_SEKCIJE' && !managedSectionId) {
+      return res.status(403).json({ error: 'Niste voditelj nijedne sekcije.' });
+    }
+
+    const section = appRole === 'VODITELJ_SEKCIJE'
+      ? await prisma.section.findUnique({
+        where: { id: managedSectionId },
+        select: { id: true, name: true },
+      })
+      : null;
+    if (appRole === 'VODITELJ_SEKCIJE' && !section) {
+      return res.status(403).json({ error: 'Sekcija koju vodite nije pronađena.' });
+    }
+
+    const members = await prisma.member.findMany({
+      where: section
+        ? {
+          OR: [
+            { homeSectionId: section.id },
+            { sections: { some: { sectionId: section.id } } },
+          ],
+        }
+        : undefined,
+      include: {
+        faculty: true,
+        homeSection: true,
+        managedSection: true,
+        sections: { include: { section: true } },
+        teams: { include: { team: true } },
+        drinks: { include: { drink: true } },
+        allergies: { include: { allergy: true } },
+      },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    });
+    const buffer = await createMembersWorkbook(members);
+    const sectionSlug = section ? `${section.name.toLowerCase()}-` : '';
+    const filename = `kset-${sectionSlug}clanovi-${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+    await logAction(prisma, section ? 'section_members_exported' : 'members_exported', {
+      userId: memberId,
+      details: { memberCount: members.length, sectionId: section?.id ?? null },
+    });
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'no-store',
+    });
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    await logError(prisma, 'members_export', err, { userId: req.user.memberId });
+    res.status(500).json({ error: 'Greška pri izvozu članova.' });
+  }
+});
 
 router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
@@ -402,6 +484,7 @@ router.get('/stats', authenticateToken, verifyCurrentRole, async (req, res) => {
         select: {
           shirtSize: true,
           dietType: true,
+          referralSource: true,
           membershipLevel: true,
           homeSection: { select: { name: true } },
           faculty: { select: { name: true } },
@@ -458,6 +541,13 @@ router.get('/stats', authenticateToken, verifyCurrentRole, async (req, res) => {
       byFacultyPunopravno: byFacultyForLevel('PUNOPRAVNO'),
       byFacultyPridruzeno: byFacultyForLevel('PRIDRUZENO'),
       byDiet: tally(members, (m) => m.dietType),
+      byReferralSource: (() => {
+        const counts = new Map(tally(members, (m) => m.referralSource).map(({ label, value }) => [label, value]));
+        return [
+          ...REFERRAL_SOURCE_OPTIONS.map((label) => ({ label, value: counts.get(label) || 0 })),
+          { label: 'Nije navedeno', value: counts.get('Nije navedeno') || members.filter((m) => !m.referralSource).length },
+        ];
+      })(),
     });
   } catch (err) {
     console.error('Get member stats error:', err);
@@ -465,10 +555,9 @@ router.get('/stats', authenticateToken, verifyCurrentRole, async (req, res) => {
   }
 });
 
-// Full profile for one member, fetched on demand when a detail page opens -
-// same visibility rule as the list (admin: everyone; leader: full detail
-// only for their own section, limited fields otherwise). Must stay after
-// /me and /stats above (both static paths /:id would otherwise swallow).
+// Full profile for one member, fetched on demand when a detail page opens.
+// Section leaders may view all member details, but may manage membership only
+// when the member belongs to their section. Must stay after /me and /stats.
 router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
@@ -499,7 +588,7 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
     }
 
     if (appRole === 'ADMINISTRATOR') {
-      return res.json({ ...target, limited: false });
+      return res.json({ ...target, limited: false, canManageMembership: true });
     }
 
     const leader = await prisma.member.findUnique({
@@ -515,10 +604,11 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
     const isHome = target.homeSectionId === sid;
     const isAssociated = target.sections.some((s) => s.sectionId === sid);
 
-    if (isHome || isAssociated) {
-      return res.json({ ...target, limited: false });
-    }
-    res.json(toLimited(target));
+    res.json({
+      ...target,
+      limited: false,
+      canManageMembership: isHome || isAssociated,
+    });
   } catch (err) {
     console.error('Get member detail error:', err);
     res.status(500).json({ error: 'Greška na serveru.' });
@@ -599,10 +689,6 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
       if (!isValidOib(data.oib)) return res.status(400).json({ error: 'OIB nije ispravan.' });
       const oibOwner = await prisma.member.findFirst({ where: { oib: data.oib, id: { not: targetId } } });
       if (oibOwner) return res.status(400).json({ error: 'Taj OIB je već u upotrebi.' });
-    }
-    if ('cardNumber' in data && data.cardNumber) {
-      const cardOwner = await prisma.member.findFirst({ where: { cardNumber: data.cardNumber, id: { not: targetId } } });
-      if (cardOwner) return res.status(400).json({ error: 'Ta šifra iskaznice je već u upotrebi.' });
     }
     if ('privateEmail' in data) {
       if (!/^\S+@\S+\.\S+$/.test(data.privateEmail)) {

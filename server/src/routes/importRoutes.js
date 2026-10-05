@@ -28,13 +28,13 @@ async function getLookups() {
 
 async function getExisting() {
   const members = await prisma.member.findMany({
-    select: { oib: true, privateEmail: true, ksetEmail: true, cardNumber: true },
+    select: { id: true, oib: true, privateEmail: true, ksetEmail: true, cardNumber: true, referralSource: true },
   });
   return {
+    membersByOib: new Map(members.map((m) => [m.oib, m])),
     oibs: new Set(members.map((m) => m.oib)),
     privateEmails: new Set(members.map((m) => m.privateEmail).filter(Boolean)),
     ksetEmails: new Set(members.map((m) => m.ksetEmail).filter(Boolean)),
-    cardNumbers: new Set(members.map((m) => m.cardNumber)),
   };
 }
 
@@ -67,12 +67,15 @@ router.post('/preview', authenticateToken, verifyCurrentRole, (req, res) => {
         getExisting(),
         getExistingHonoraryNames(),
       ]);
-      const result = parseSectionSheets(req.file.buffer, lookups, existing);
-      const honoraryResult = parseHonoraryBuffer(req.file.buffer, existingHonoraryNames);
+      const [result, honoraryResult] = await Promise.all([
+        parseSectionSheets(req.file.buffer, lookups, existing),
+        parseHonoraryBuffer(req.file.buffer, existingHonoraryNames),
+      ]);
       res.json({
         totalRows: result.totalRows,
         inactiveSkipped: result.inactiveSkipped,
         validCount: result.valid.length,
+        enrichmentCount: result.updates.length,
         invalidCount: result.invalid.length,
         invalid: result.invalid.slice(0, 100).map((e) => ({
           locations: e.locations,
@@ -110,10 +113,12 @@ router.post('/commit', authenticateToken, verifyCurrentRole, (req, res) => {
         getExisting(),
         getExistingHonoraryNames(),
       ]);
-      const result = parseSectionSheets(req.file.buffer, lookups, existing);
-      const honoraryResult = parseHonoraryBuffer(req.file.buffer, existingHonoraryNames);
+      const [result, honoraryResult] = await Promise.all([
+        parseSectionSheets(req.file.buffer, lookups, existing),
+        parseHonoraryBuffer(req.file.buffer, existingHonoraryNames),
+      ]);
 
-      if (result.valid.length === 0 && honoraryResult.valid.length === 0) {
+      if (result.valid.length === 0 && result.updates.length === 0 && honoraryResult.valid.length === 0) {
         return res.status(400).json({
           error: 'Nema valjanih redaka za uvoz.',
           invalidCount: result.invalid.length,
@@ -163,6 +168,7 @@ router.post('/commit', authenticateToken, verifyCurrentRole, (req, res) => {
                 dietType: d.dietType,
                 shirtSize: d.shirtSize,
                 acceptedDocuments: d.acceptedDocuments,
+                referralSource: d.referralSource,
                 appRole: 'CLAN',
                 homeSectionId: d.homeSectionId,
                 sections: { create: d.sectionNames.map((n) => ({ sectionId: sectionByName.get(n) })) },
@@ -174,11 +180,20 @@ router.post('/commit', authenticateToken, verifyCurrentRole, (req, res) => {
             count++;
           }
 
+          let enriched = 0;
+          for (const update of result.updates) {
+            const saved = await tx.member.updateMany({
+              where: { id: update.memberId, referralSource: null },
+              data: { referralSource: update.referralSource },
+            });
+            enriched += saved.count;
+          }
+
           if (honoraryResult.valid.length > 0) {
             await tx.honoraryMember.createMany({ data: honoraryResult.valid });
           }
 
-          return count;
+          return { created: count, enriched };
         },
         { timeout: 120000 }
       );
@@ -186,7 +201,8 @@ router.post('/commit', authenticateToken, verifyCurrentRole, (req, res) => {
       await logAction(prisma, 'members_imported', {
         userId: req.user.memberId,
         details: {
-          created,
+          created: created.created,
+          enriched: created.enriched,
           skippedInvalid: result.invalid.length,
           skippedInactive: result.inactiveSkipped,
           newDrinkNames: result.newDrinkNames,
@@ -196,7 +212,8 @@ router.post('/commit', authenticateToken, verifyCurrentRole, (req, res) => {
       });
 
       res.json({
-        created,
+        created: created.created,
+        enriched: created.enriched,
         skippedInvalid: result.invalid.length,
         skippedInactive: result.inactiveSkipped,
         honoraryCreated: honoraryResult.valid.length,

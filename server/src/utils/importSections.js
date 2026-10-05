@@ -1,13 +1,14 @@
 // Parses all 10 per-section sheets (_Bike, _Disco, ...) of the legacy KSET
 // Excel registar, instead of the flattened "_Svi" sheet. A member who
 // belongs to more than one section appears once per section sheet they're
-// in - this reconciles those into one person per name, deriving their
+// in - this reconciles those into one person per OIB, deriving their
 // section memberships from *which sheets they appear in* rather than from
 // the sheet's own "Jeste li pridruženi..." text column, and treats any
 // sheet-to-sheet disagreement on a person's data as an error rather than
 // guessing which copy is right.
-const XLSX = require('xlsx');
-const { REQUIRED_HEADERS, SECTION_ABBR, parseMemberRow, toDateOnlyString } = require('./importMemberRow');
+const { loadWorkbook, cellValue } = require('./excelWorkbook');
+const { REQUIRED_HEADERS, parseMemberRow, toDateOnlyString } = require('./importMemberRow');
+const { canonicalSectionName, createSectionNameLookup, sectionSheetNames } = require('./sectionNames');
 
 const SECTION_SHEETS = ['_Bike', '_Disco', '_Dramska', '_Foto', '_Glazbena', '_Media', '_Pi', '_Comp', '_Tech', '_Video'];
 
@@ -15,10 +16,11 @@ const SECTION_SHEETS = ['_Bike', '_Disco', '_Dramska', '_Foto', '_Glazbena', '_M
 // disagreement. Deliberately excludes "Jeste li pridruženi nekoj drugoj
 // sekciji?" - section membership is derived from sheet presence instead.
 const COMPARE_FIELDS = [
-  'Aktivan član', 'OIB', 'Datum rođenja', 'Datum učlanjenja', 'Trenutna vrsta članstva',
+  'Ime i prezime', 'Aktivan član', 'Datum rođenja', 'Datum učlanjenja', 'Trenutna vrsta članstva',
   'Datum postanka narančastim', 'Fakultet', 'Adresa prebivališta', 'Poštanski broj',
   'Kontakt broj mobitela', 'Privatna e-pošta', 'KSET e-pošta', 'Matična sekcija',
-  'Veličina majice', 'Šifra iskaznice', 'Spol', 'Jeste li pridruženi nekom timu?',
+  'Veličina majice', 'Šifra iskaznice', 'Spol', 'Kako ste saznali za KSET?',
+  'Jeste li pridruženi nekom timu?',
   'Koju vrste prehrane konzumirate?', 'Koju vrstu pića konzumirate?',
   'Imate li kakve alergije u vezi pića ili hrane?', 'Statut i drugi akti udruge',
   'GDPR Privola', 'Kodeks Udruge', 'Kodeks nulte tolerancije', 'Politika privatnosti',
@@ -39,45 +41,62 @@ function locationLabel(o) {
 
 // `lookups` = { sections, teams, drinks, faculties }; `existing` = Sets of
 // what's already in the DB (same shape as importSections' caller builds).
-function parseSectionSheets(buffer, lookups, existing) {
-  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-  const missingSheets = SECTION_SHEETS.filter((s) => !wb.SheetNames.includes(s));
+async function parseSectionSheets(buffer, lookups, existing) {
+  const workbook = await loadWorkbook(buffer);
+  const worksheetsBySection = new Map();
+  const missingSheets = [];
+  for (const sheetName of SECTION_SHEETS) {
+    const sectionName = canonicalSectionName(sheetName.replace(/^_/, ''));
+    const aliases = sectionSheetNames(sectionName);
+    const worksheet = aliases
+      .map((sheetName) => workbook.getWorksheet(sheetName))
+      .find(Boolean)
+      || workbook.worksheets.find((candidate) =>
+        canonicalSectionName(candidate.name.replace(/^_/, '')) === sectionName
+      );
+    if (!worksheet) missingSheets.push(aliases[0]);
+    else worksheetsBySection.set(sectionName, worksheet);
+  }
   if (missingSheets.length > 0) {
-    throw new Error(`Nedostaju listovi sekcija u datoteci: ${missingSheets.join(', ')}`);
+    throw new Error(`Nedostaju listovi sekcija u datoteci (nazivi trenutni ili stari): ${missingSheets.join(', ')}`);
   }
 
-  const sectionByName = new Map(lookups.sections.map((s) => [s.name, s.id]));
+  const sectionNameLookup = createSectionNameLookup(lookups.sections);
+  const sectionByName = new Map(
+    [...sectionNameLookup].map(([canonicalName, section]) => [canonicalName, section.id])
+  );
   const teamByName = new Map(lookups.teams.map((t) => [t.name, t.id]));
   const drinkByName = new Map(lookups.drinks.map((d) => [d.name, d.id]));
   const facultyByName = new Map(lookups.faculties.map((f) => [f.name, f.id]));
 
-  const occurrencesByName = new Map();
+  const occurrencesByOib = new Map();
   let totalRawRows = 0;
 
   for (const sheetName of SECTION_SHEETS) {
-    const ws = wb.Sheets[sheetName];
-    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-    if (raw.length === 0) continue;
-    const header = raw[0].map((h) => (h || '').toString().trim())
+    const sectionName = canonicalSectionName(sheetName.replace(/^_/, ''));
+    const worksheet = worksheetsBySection.get(sectionName);
+    if (worksheet.rowCount === 0) continue;
+    const headerRow = worksheet.getRow(1);
+    const header = Array.from({ length: headerRow.cellCount }, (_, index) =>
+      String(cellValue(headerRow.getCell(index + 1).value) || '').trim()
+    )
       .map((h) => h === 'Adresa prebivališa' ? 'Adresa prebivališta' : h);
     const missingHeaders = REQUIRED_HEADERS.filter((h) => !header.includes(h));
     if (missingHeaders.length > 0) {
       throw new Error(`Nedostaju stupci u listu "${sheetName}": ${missingHeaders.join(', ')}`);
     }
-    const nameCol = header.indexOf('Ime i prezime');
-
-    const dataRows = raw.slice(1).filter((r) => (r[nameCol] || '').toString().trim());
-
-    for (let i = 0; i < dataRows.length; i++) {
-      totalRawRows++;
-      const arr = dataRows[i];
+    for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
+      const excelRow = worksheet.getRow(rowNum);
       const row = {};
-      header.forEach((h, idx) => { row[h] = arr[idx]; });
-      const rowNum = i + 2;
+      header.forEach((h, idx) => { row[h] = cellValue(excelRow.getCell(idx + 1).value) ?? ''; });
       const personName = (row['Ime i prezime'] || '').toString().trim();
+      if (!personName) continue;
+      totalRawRows++;
 
-      if (!occurrencesByName.has(personName)) occurrencesByName.set(personName, []);
-      occurrencesByName.get(personName).push({ sheetName, rowNum, row });
+      const oib = (row.OIB || '').toString().trim();
+      const identityKey = oib ? `oib:${oib}` : `row:${sheetName}:${rowNum}`;
+      if (!occurrencesByOib.has(identityKey)) occurrencesByOib.set(identityKey, []);
+      occurrencesByOib.get(identityKey).push({ sheetName, rowNum, row });
     }
   }
 
@@ -85,15 +104,16 @@ function parseSectionSheets(buffer, lookups, existing) {
     totalRows: totalRawRows,
     inactiveSkipped: 0,
     valid: [],
+    updates: [],
     invalid: [],
     newDrinkNames: new Set(),
   };
 
   const batchOibs = new Set();
   const batchEmails = new Set();
-  const batchCardNumbers = new Set();
 
-  for (const [personName, occurrences] of occurrencesByName.entries()) {
+  for (const occurrences of occurrencesByOib.values()) {
+    const personName = (occurrences[0].row['Ime i prezime'] || '').toString().trim();
     const locations = occurrences.map(locationLabel).join(', ');
 
     const activeFlags = occurrences.map((o) => isActiveCell(o.row));
@@ -136,23 +156,25 @@ function parseSectionSheets(buffer, lookups, existing) {
     }
 
     const data = parsed.data;
+    const existingMember = existing.membersByOib?.get(data.oib);
 
     // Associated sections = every section sheet this person appears in,
     // minus their own home section.
-    const sectionNames = [...new Set(occurrences.map((o) => SECTION_ABBR[o.sheetName.replace(/^_/, '')]))]
+    const sectionNames = [...new Set(occurrences.map((o) => canonicalSectionName(o.sheetName.replace(/^_/, ''))))]
       .filter((n) => n !== data.homeSectionName);
-    const unresolvedSections = sectionNames.filter((n) => !sectionByName.has(n));
+    const unresolvedSections = sectionNames.filter((n) => !sectionNameLookup.has(n));
 
     const errors = [];
     if (unresolvedSections.length > 0) errors.push(`Nepoznata pridružena sekcija: ${unresolvedSections.join(', ')}`);
 
-    if (batchOibs.has(data.oib) || existing.oibs.has(data.oib)) errors.push('OIB se dupliciran (već postoji).');
-    if (data.cardNumber && (batchCardNumbers.has(data.cardNumber) || existing.cardNumbers.has(data.cardNumber))) {
-      errors.push('Šifra iskaznice se dupliciran (već postoji).');
+    if (batchOibs.has(data.oib) || (!existingMember && existing.oibs.has(data.oib))) {
+      errors.push('OIB se dupliciran (već postoji).');
     }
-    for (const email of [data.privateEmail, data.ksetEmail].filter(Boolean)) {
-      if (batchEmails.has(email) || existing.privateEmails.has(email) || existing.ksetEmails.has(email)) {
-        errors.push(`E-mail se duplicira: ${email}`);
+    if (!existingMember) {
+      for (const email of [data.privateEmail, data.ksetEmail].filter(Boolean)) {
+        if (batchEmails.has(email) || existing.privateEmails.has(email) || existing.ksetEmails.has(email)) {
+          errors.push(`E-mail se duplicira: ${email}`);
+        }
       }
     }
 
@@ -161,18 +183,32 @@ function parseSectionSheets(buffer, lookups, existing) {
       continue;
     }
 
+    batchOibs.add(data.oib);
+    if (existingMember) {
+      if (!existingMember.referralSource && data.referralSource) {
+        result.updates.push({
+          memberId: existingMember.id,
+          referralSource: data.referralSource,
+          personName,
+          locations,
+        });
+      }
+      continue;
+    }
+
     for (const name of data.drinkNames) {
       if (!drinkByName.has(name)) result.newDrinkNames.add(name);
     }
-    batchOibs.add(data.oib);
     if (data.privateEmail) batchEmails.add(data.privateEmail);
     if (data.ksetEmail) batchEmails.add(data.ksetEmail);
-    if (data.cardNumber) batchCardNumbers.add(data.cardNumber);
 
     result.valid.push({
       personName,
       locations,
-      data: { ...data, sectionNames },
+      data: {
+        ...data,
+        sectionNames: sectionNames.map((name) => sectionNameLookup.get(name).name),
+      },
     });
   }
 

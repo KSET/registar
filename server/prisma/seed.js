@@ -8,15 +8,15 @@ async function main() {
   }
 
   const sections = [
-    'Biciklistička',
+    'Bike',
     'Disco',
     'Dramska',
     'Foto',
     'Glazbena',
     'Media',
-    'Planinarska',
-    'Računarska',
-    'Tehnička',
+    'Pi',
+    'Comp',
+    'Tech',
     'Video',
   ];
   let adminHomeSectionId = null;
@@ -26,7 +26,7 @@ async function main() {
       update: {},
       create: { name },
     });
-    if (name === 'Biciklistička') adminHomeSectionId = section.id;
+    if (name === 'Bike') adminHomeSectionId = section.id;
   }
   console.log(`Seeded ${sections.length} sections`);
 

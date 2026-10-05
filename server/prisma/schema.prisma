@@ -104,7 +104,7 @@ model Member {
   ksetEmail          String?         @unique
   ksetEmailVerified  Boolean         @default(true)
   memberSince        DateTime        @db.Date
-  cardNumber         String?         @unique
+  cardNumber         String?
   membershipLevel    MembershipLevel
   fullMemberSince    DateTime?       @db.Date
   dietType           DietType
@@ -113,6 +113,8 @@ model Member {
   acceptedDocuments  Boolean         @default(false)
   certificatePath    String?
   certificateValidUntil DateTime?    @db.Date
+  certificateApprovedAt DateTime?
+  referralSource        String?
   appRole            AppRole         @default(CLAN)
   discordId          String?         @unique @db.VarChar(20)
 

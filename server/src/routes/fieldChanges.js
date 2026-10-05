@@ -119,6 +119,7 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
         supersededCertificate = change.member.certificatePath;
         updateData.certificatePath = change.newValue;
         const now = new Date();
+        updateData.certificateApprovedAt = now;
         let year = now.getFullYear();
         const sept30 = new Date(year, 8, 30);
         if (now > sept30) year += 1;

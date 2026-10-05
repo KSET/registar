@@ -9,6 +9,7 @@ const { isValidOib } = require('../utils/oib');
 const { saveCertificateBuffer, deleteCertificate } = require('./uploads');
 const { parsePositiveIntParam, isValidDateOnly, validateIdArray, checkFieldLength } = require('../utils/requestValidation');
 const { isPdfBuffer, normalizePdfBuffer } = require('../utils/fileValidation');
+const { REFERRAL_SOURCE_OPTIONS } = require('../utils/referralSources');
 
 const router = express.Router();
 
@@ -61,6 +62,8 @@ const PENDING_FIELD_VALIDATORS = {
   // so this one stays required specifically for them.
   privateEmail: (v, pending) =>
     isKsetEmail(pending.googleEmail) && !v ? 'Privatni e-mail je obavezan.' : null,
+  referralSource: (v) =>
+    REFERRAL_SOURCE_OPTIONS.includes(v) ? null : 'Odaberite kako ste saznali za KSET.',
 };
 
 function parseArr(v) {
@@ -134,6 +137,7 @@ router.post('/', authenticateToken, (req, res) => {
       const {
         firstName, lastName, oib, dateOfBirth, address, houseNumber, postalCode, city,
         gender, facultyId, facultyOther, phone, privateEmail, homeSectionId, dietType, shirtSize,
+        referralSource,
       } = req.body;
 
       const sectionIds = parseArr(req.body.sectionIds);
@@ -158,6 +162,7 @@ router.post('/', authenticateToken, (req, res) => {
       if (!postalCode || !postalCode.trim()) errors.push('Poštanski broj je obavezan.');
       if (!city || !city.trim()) errors.push('Mjesto je obavezno.');
       if (!gender || !['M', 'Z', 'OSTALO'].includes(gender)) errors.push('Spol je obavezan.');
+      if (!REFERRAL_SOURCE_OPTIONS.includes(referralSource)) errors.push('Odaberite kako ste saznali za KSET.');
       const parsedFacultyId = facultyId ? parsePositiveIntParam(facultyId) : null;
       if (facultyId && parsedFacultyId === null) errors.push('Nevažeći fakultet.');
       if (!parsedFacultyId && (!facultyOther || !facultyOther.trim())) {
@@ -192,6 +197,15 @@ router.post('/', authenticateToken, (req, res) => {
       }
       if (sectionResult.ok && parsedHomeSectionId !== null && sectionResult.ids.includes(parsedHomeSectionId)) {
         errors.push('Matična sekcija ne može biti i pridružena sekcija.');
+      }
+      if (sectionResult.ok && sectionResult.ids.length > 0) {
+        const mediaSection = await prisma.section.findUnique({
+          where: { name: 'Media' },
+          select: { id: true },
+        });
+        if (!mediaSection || sectionResult.ids.some((id) => id !== mediaSection.id)) {
+          errors.push('Plavi članovi mogu odabrati samo Mediju kao pridruženu sekciju.');
+        }
       }
 
       const relationChecks = [
@@ -263,6 +277,7 @@ router.post('/', authenticateToken, (req, res) => {
         shirtSize: shirtSize.trim(),
         transportVolunteer,
         acceptedDocuments,
+        referralSource,
       };
 
       const fieldStatus = {};
@@ -656,8 +671,10 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
           shirtSize: data.shirtSize,
           transportVolunteer: Boolean(data.transportVolunteer),
           acceptedDocuments: data.acceptedDocuments,
+          referralSource: data.referralSource,
           certificatePath: data.certificatePath || null,
           certificateValidUntil: data.certificatePath ? nextCertificateValidUntil() : null,
+          certificateApprovedAt: data.certificatePath ? new Date() : null,
           appRole: 'CLAN',
           sections: {
             create: (data.sectionIds || []).map((sId) => ({ sectionId: sId })),

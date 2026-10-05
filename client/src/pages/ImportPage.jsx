@@ -79,6 +79,9 @@ export default function ImportPage() {
         Uvoz čita 10 listova sekcija (<strong>„_Bike", „_Disco", „_Dramska", „_Foto", „_Glazbena",
         „_Media", „_Pi", „_Comp", „_Tech", „_Video"</strong> - samo <strong>„Aktivan član: Da"</strong>)
         i list <strong>„C"</strong> (počasni članovi, samo ime i prezime) iz istog Excel registra.
+        Odgovor na pitanje <strong>„Kako ste saznali za KSET?“</strong> također se uvozi.
+        Postojećeg člana prepoznaje po OIB-u i popunjava odgovor samo ako je trenutačno prazan;
+        ostale podatke ne mijenja.
         Član koji je u više listova sekcija broji se jednom, a te sekcije postaju njegove
         pridružene sekcije. Ako se listovi sekcija ne slažu oko nečijih podataka, redak se
         preskače uz grešku umjesto nagađanja koji je list točan.
@@ -90,6 +93,7 @@ export default function ImportPage() {
       {result && (
         <Alert kind="success">
           Uvoz završen: <strong>{result.created}</strong> novih članova i{' '}
+          <strong>{result.enriched}</strong> postojećih članova dopunjeno odgovorom o KSET-u, te{' '}
           <strong>{result.honoraryCreated}</strong> novih počasnih članova stvoreno.
           {result.skippedInvalid > 0 && ` ${result.skippedInvalid} redak(a) preskočeno zbog grešaka.`}
           {result.skippedInactive > 0 && ` ${result.skippedInactive} neaktivnih redaka preskočeno.`}
@@ -119,7 +123,7 @@ export default function ImportPage() {
 
       {preview && (
         <Card title="2. Pregled prije uvoza">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-4 text-sm">
             <div>
               <div className="text-content-muted">Ukupno redaka</div>
               <div className="text-content-primary text-lg font-semibold">{preview.totalRows}</div>
@@ -131,6 +135,10 @@ export default function ImportPage() {
             <div>
               <div className="text-state-success">Spremno za uvoz</div>
               <div className="text-state-success text-lg font-semibold">{preview.validCount}</div>
+            </div>
+            <div>
+              <div className="text-content-muted">Postojećih za dopunu</div>
+              <div className="text-content-primary text-lg font-semibold">{preview.enrichmentCount}</div>
             </div>
             <div>
               <div className="text-state-error">Greške (preskočeno)</div>
@@ -177,10 +185,10 @@ export default function ImportPage() {
           <button
             type="button"
             className="btn-primary"
-            disabled={(preview.validCount === 0 && (preview.honorary?.newCount || 0) === 0) || committing}
+            disabled={(preview.validCount === 0 && preview.enrichmentCount === 0 && (preview.honorary?.newCount || 0) === 0) || committing}
             onClick={() => setConfirmOpen(true)}
           >
-            {committing ? 'Uvozim...' : `Potvrdi uvoz (${preview.validCount} članova, ${preview.honorary?.newCount || 0} počasnih)`}
+            {committing ? 'Uvozim...' : `Potvrdi uvoz (${preview.validCount} novih, ${preview.enrichmentCount} dopuna, ${preview.honorary?.newCount || 0} počasnih)`}
           </button>
         </Card>
       )}
@@ -188,7 +196,7 @@ export default function ImportPage() {
       <ConfirmDialog
         open={confirmOpen}
         title="Potvrda uvoza"
-        message={`Ovo će stvoriti ${preview?.validCount || 0} novih članova i ${preview?.honorary?.newCount || 0} počasnih članova u bazi. Ova akcija se ne može poništiti kroz sučelje. Nastaviti?`}
+        message={`Ovo će stvoriti ${preview?.validCount || 0} novih članova, dopuniti odgovor o izvoru KSET-a za najviše ${preview?.enrichmentCount || 0} postojećih članova i stvoriti ${preview?.honorary?.newCount || 0} počasnih članova. Ostali podatci postojećih članova neće se mijenjati. Nastaviti?`}
         onConfirm={runCommit}
         onCancel={() => setConfirmOpen(false)}
       />
