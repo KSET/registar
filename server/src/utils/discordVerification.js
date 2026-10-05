@@ -56,6 +56,8 @@ function memberBotData(member) {
     section: member.homeSection.name,
     status_clanstva: member.membershipLevel,
     transport_volunteer: member.transportVolunteer,
+    app_role: member.appRole,
+    teams: member.teams.map(({ team }) => team.name),
   };
 }
 
@@ -167,7 +169,9 @@ async function completeDiscordVerification(state, email, emailVerified) {
         lastName: true,
         membershipLevel: true,
         transportVolunteer: true,
+        appRole: true,
         homeSection: { select: { name: true } },
+        teams: { select: { team: { select: { name: true } } } },
       },
     });
 
@@ -196,7 +200,9 @@ async function getDiscordVerificationStatus(state) {
         lastName: true,
         membershipLevel: true,
         transportVolunteer: true,
+        appRole: true,
         homeSection: { select: { name: true } },
+        teams: { select: { team: { select: { name: true } } } },
       },
     } },
   });
@@ -230,7 +236,9 @@ async function getLinkedDiscordMembers() {
       lastName: true,
       membershipLevel: true,
       transportVolunteer: true,
+      appRole: true,
       homeSection: { select: { name: true } },
+      teams: { select: { team: { select: { name: true } } } },
     },
     orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
   });
