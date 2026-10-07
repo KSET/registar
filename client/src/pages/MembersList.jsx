@@ -320,7 +320,8 @@ export default function MembersList({ isAdmin, canManageMembership }) {
     .sort((a, b) => a.localeCompare(b, 'hr', { sensitivity: 'base' }));
   const availableBirthYears = [...new Set(members.map((member) => member.birthYear).filter(Boolean))]
     .sort((a, b) => b - a);
-  const columnsToShow = isAdmin ? DEFAULT_VISIBLE_COLUMNS : visibleColumns;
+  //const columnsToShow = isAdmin ? DEFAULT_VISIBLE_COLUMNS : visibleColumns;
+  const columnsToShow = visibleColumns;
   const tableColumns = MEMBER_COLUMNS.filter(
     ({ key }) => key === 'name' || columnsToShow.includes(key)
   );
@@ -491,7 +492,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
         )}
       </div>
 
-      {!isAdmin && canManageMembership && (
+      {canManageMembership && (
         <details className="mb-4 rounded-lg border border-surface-border p-3">
           <summary className="cursor-pointer text-sm font-medium">Odaberi stupce</summary>
           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">

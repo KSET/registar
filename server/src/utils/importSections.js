@@ -117,18 +117,18 @@ async function parseSectionSheets(buffer, lookups, existing) {
     const locations = occurrences.map(locationLabel).join(', ');
 
     const activeFlags = occurrences.map((o) => isActiveCell(o.row));
-    if (activeFlags.every((a) => !a)) {
-      result.inactiveSkipped++;
-      continue;
-    }
-    if (!activeFlags.every((a) => a === activeFlags[0])) {
-      result.invalid.push({
-        personName,
-        locations,
-        errors: [`Nedosljedan status "Aktivan član" između listova sekcija (${locations}).`],
-      });
-      continue;
-    }
+    // if (activeFlags.every((a) => !a)) {
+    //   result.inactiveSkipped++;
+    //   continue;
+    // }
+    // if (!activeFlags.every((a) => a === activeFlags[0])) {
+    //   result.invalid.push({
+    //     personName,
+    //     locations,
+    //     errors: [`Nedosljedan status "Aktivan član" između listova sekcija (${locations}).`],
+    //   });
+    //   continue;
+    // }
 
     if (occurrences.length > 1) {
       const base = occurrences[0].row;
