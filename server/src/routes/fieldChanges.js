@@ -3,6 +3,7 @@ const express = require('express');
 const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
 const { verifyCurrentRole } = require('../middleware/verifyRole');
+const { hasAdminRole } = require('../middleware/authorize');
 const { logAction, logError } = require('../utils/auditLog');
 const { parsePositiveIntParam } = require('../utils/requestValidation');
 const { deleteCertificate } = require('./uploads');
@@ -19,13 +20,13 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
 
-    if (!appRole || appRole === 'CLAN') {
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
     let changes;
 
-    if (appRole === 'ADMINISTRATOR') {
+    if (hasAdminRole(appRole)) {
       changes = await prisma.pendingFieldChange.findMany({
         where: { status: 'PENDING' },
         include: {
@@ -71,7 +72,7 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
   try {
     const { appRole, memberId } = req.user;
 
-    if (!appRole || appRole === 'CLAN') {
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 

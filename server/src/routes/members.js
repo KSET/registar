@@ -2,6 +2,7 @@ const express = require('express');
 const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
 const { verifyCurrentRole } = require('../middleware/verifyRole');
+const { hasAdminRole } = require('../middleware/authorize');
 const { logAction, logError } = require('../utils/auditLog');
 const { parsePositiveIntParam, validateIdArray, checkFieldLength } = require('../utils/requestValidation');
 const { isEmailTaken } = require('../utils/emailUnique');
@@ -272,26 +273,22 @@ router.patch('/me', authenticateToken, async (req, res) => {
 router.patch('/:id/management', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
-    if (!['ADMINISTRATOR', 'VODITELJ_SEKCIJE'].includes(appRole)) {
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
     const targetId = parsePositiveIntParam(req.params.id);
     if (targetId === null) return res.status(400).json({ error: 'Nevažeći ID člana.' });
 
-    const target = await prisma.member.findUnique({
-      where: { id: targetId },
-      include: { sections: { select: { sectionId: true } } },
-    });
+    const target = await prisma.member.findUnique({ where: { id: targetId } });
     if (!target) return res.status(404).json({ error: 'Član nije pronađen.' });
 
     if (appRole === 'VODITELJ_SEKCIJE') {
       const leader = await prisma.member.findUnique({ where: { id: memberId }, select: { managedSectionId: true } });
       const sectionId = leader?.managedSectionId;
-      const canManage = sectionId && (
-        target.homeSectionId === sectionId || target.sections.some((section) => section.sectionId === sectionId)
-      );
-      if (!canManage) return res.status(403).json({ error: 'Niste voditelj sekcije ovog člana.' });
+      if (!sectionId || target.homeSectionId !== sectionId) {
+        return res.status(403).json({ error: 'Možete uređivati samo članove čija je matična sekcija vaša sekcija.' });
+      }
     }
 
     const data = {};
@@ -363,7 +360,13 @@ function toListItem(m, limited) {
     phone: m.phone,
     facultyName: m.faculty?.name || m.facultyOther || '',
     homeSection: m.homeSection,
-    isCouncilMember: m.appRole === 'VODITELJ_SEKCIJE' || m.appRole === 'ADMINISTRATOR',
+    isCouncilMember: [
+      'VODITELJ_SEKCIJE',
+      'ADMINISTRATOR',
+      'NADZORNI',
+      'SANKER',
+      'VODITELJ_PROGRAMA',
+    ].includes(m.appRole),
     limited,
   };
 }
@@ -371,7 +374,7 @@ function toListItem(m, limited) {
 router.get('/export', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId, managedSectionId } = req.user;
-    if (appRole !== 'ADMINISTRATOR' && appRole !== 'VODITELJ_SEKCIJE') {
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -443,7 +446,11 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     });
 
-    if (appRole === 'ADMINISTRATOR') {
+    if (hasAdminRole(appRole)) {
+      return res.json(allMembers.map((m) => toListItem(m, false)));
+    }
+
+    if (['SANKER', 'VODITELJ_PROGRAMA'].includes(appRole)) {
       return res.json(allMembers.map((m) => toListItem(m, false)));
     }
 
@@ -461,7 +468,12 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
     const result = allMembers.map((m) => {
       const isHome = m.homeSectionId === sid;
       const isAssociated = m.sections.some((s) => s.sectionId === sid);
-      return toListItem(m, !(isHome || isAssociated));
+      return {
+        ...toListItem(m, !(isHome || isAssociated)),
+        isHomeSectionMember: isHome,
+        isManagedSectionMember: isHome || isAssociated,
+        managedSectionId: sid,
+      };
     });
 
     res.json(result);
@@ -475,7 +487,7 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
 router.get('/stats', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole } = req.user;
-    if (appRole !== 'ADMINISTRATOR') {
+    if (!hasAdminRole(appRole)) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -557,7 +569,7 @@ router.get('/stats', authenticateToken, verifyCurrentRole, async (req, res) => {
 
 // Full profile for one member, fetched on demand when a detail page opens.
 // Section leaders may view all member details, but may manage membership only
-// when the member belongs to their section. Must stay after /me and /stats.
+// when the member's home section is theirs. Must stay after /me and /stats.
 router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
@@ -587,7 +599,11 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
       return res.status(404).json({ error: 'Član nije pronađen.' });
     }
 
-    if (appRole === 'ADMINISTRATOR') {
+    if (['SANKER', 'VODITELJ_PROGRAMA'].includes(appRole)) {
+      return res.json({ ...target, limited: false, canManageMembership: false });
+    }
+
+    if (hasAdminRole(appRole)) {
       return res.json({ ...target, limited: false, canManageMembership: true });
     }
 
@@ -602,12 +618,11 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
 
     const sid = leader.managedSectionId;
     const isHome = target.homeSectionId === sid;
-    const isAssociated = target.sections.some((s) => s.sectionId === sid);
 
     res.json({
       ...target,
       limited: false,
-      canManageMembership: isHome || isAssociated,
+      canManageMembership: isHome,
     });
   } catch (err) {
     console.error('Get member detail error:', err);
@@ -621,7 +636,7 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
 router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole } = req.user;
-    if (appRole !== 'ADMINISTRATOR') {
+    if (!hasAdminRole(appRole)) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -781,7 +796,7 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
 router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId: actorId } = req.user;
-    if (appRole !== 'ADMINISTRATOR') {
+    if (!hasAdminRole(appRole)) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -795,10 +810,12 @@ router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => 
       return res.status(404).json({ error: 'Član nije pronađen.' });
     }
 
-    if (target.appRole === 'ADMINISTRATOR') {
-      const adminCount = await prisma.member.count({ where: { appRole: 'ADMINISTRATOR' } });
+    if (hasAdminRole(target.appRole)) {
+      const adminCount = await prisma.member.count({
+        where: { appRole: { in: ['ADMINISTRATOR', 'NADZORNI'] } },
+      });
       if (adminCount <= 1) {
-        return res.status(400).json({ error: 'Mora postojati barem jedan administrator.' });
+        return res.status(400).json({ error: 'Mora postojati barem jedan administrator ili nadzorni.' });
       }
     }
 
@@ -824,7 +841,7 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
   try {
     const { appRole: actorRole, memberId: actorId } = req.user;
 
-    if (actorRole !== 'ADMINISTRATOR') {
+    if (!hasAdminRole(actorRole)) {
       return res.status(403).json({ error: 'Samo administrator može mijenjati uloge.' });
     }
 
@@ -834,7 +851,7 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
     }
     const { appRole, managedSectionId } = req.body;
 
-    if (!['CLAN', 'VODITELJ_SEKCIJE', 'ADMINISTRATOR'].includes(appRole)) {
+    if (!['CLAN', 'VODITELJ_SEKCIJE', 'ADMINISTRATOR', 'NADZORNI', 'SANKER', 'VODITELJ_PROGRAMA'].includes(appRole)) {
       return res.status(400).json({ error: 'Nevažeća uloga.' });
     }
 
@@ -843,10 +860,12 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
       return res.status(404).json({ error: 'Član nije pronađen.' });
     }
 
-    if (target.appRole === 'ADMINISTRATOR' && appRole !== 'ADMINISTRATOR') {
-      const adminCount = await prisma.member.count({ where: { appRole: 'ADMINISTRATOR' } });
+    if (hasAdminRole(target.appRole) && !hasAdminRole(appRole)) {
+      const adminCount = await prisma.member.count({
+        where: { appRole: { in: ['ADMINISTRATOR', 'NADZORNI'] } },
+      });
       if (adminCount <= 1) {
-        return res.status(400).json({ error: 'Mora postojati barem jedan administrator.' });
+        return res.status(400).json({ error: 'Mora postojati barem jedan administrator ili nadzorni.' });
       }
     }
 
@@ -883,10 +902,18 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
 
     await logAction(prisma, 'member_role_changed', {
       userId: actorId,
-      details: { targetId, newRole: appRole, managedSectionId: newManagedSectionId },
+      details: {
+        targetId,
+        newRole: appRole,
+        managedSectionId: newManagedSectionId,
+      },
     });
 
-    res.json({ id: updated.id, appRole: updated.appRole, managedSectionId: updated.managedSectionId });
+    res.json({
+      id: updated.id,
+      appRole: updated.appRole,
+      managedSectionId: updated.managedSectionId,
+    });
   } catch (err) {
     await logError(prisma, 'member_role_change', err, { userId: req.user.memberId, details: { targetId: req.params.id } });
     res.status(500).json({ error: 'Greška na serveru.' });

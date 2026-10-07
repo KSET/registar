@@ -17,6 +17,9 @@ const ROLE_LABELS = {
   CLAN: 'Član',
   VODITELJ_SEKCIJE: 'Voditelj sekcije',
   ADMINISTRATOR: 'Administrator',
+  NADZORNI: 'Nadzorni',
+  SANKER: 'Šef šanka',
+  VODITELJ_PROGRAMA: 'Voditelj programa',
 };
 const COUNCIL_FILTER = 'savjet';
 const FACULTY_OTHER = 'OTHER';
@@ -78,6 +81,19 @@ function updatedThisAcademicYear(certificateApprovedAt) {
   return approvedAt >= academicYearStart;
 }
 
+function AcademicYearUpdateStatus({ certificateApprovedAt }) {
+  const isUpdated = updatedThisAcademicYear(certificateApprovedAt);
+  return (
+    <span
+      className={isUpdated ? 'font-bold text-state-success' : 'font-bold text-state-error'}
+      aria-label={isUpdated ? 'Ažurirao formu ove akademske godine' : 'Nije ažurirao formu ove akademske godine'}
+      title={isUpdated ? 'Ažurirao formu ove akademske godine' : 'Nije ažurirao formu ove akademske godine'}
+    >
+      {isUpdated ? '✓' : '✕'}
+    </span>
+  );
+}
+
 function SortableHeader({ column, label, sortBy, sortDirection, onSort }) {
   const active = sortBy === column;
   return (
@@ -128,6 +144,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sectionFilter, setSectionFilter] = useState(null); // null = svi
+  const [showOnlyHomeMembers, setShowOnlyHomeMembers] = useState(false);
   const [sortBy, setSortBy] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
   const [facultyFilter, setFacultyFilter] = useState('');
@@ -265,9 +282,17 @@ export default function MembersList({ isAdmin, canManageMembership }) {
       (m.privateEmail || '').toLowerCase().includes(q);
     const matchesSection =
       sectionFilter === null ||
-      (sectionFilter === COUNCIL_FILTER ? m.isCouncilMember : m.homeSection?.id === sectionFilter);
+      (sectionFilter === COUNCIL_FILTER
+        ? m.isCouncilMember
+        : m.homeSection?.id === sectionFilter
+          || (!showOnlyHomeMembers
+            && m.isManagedSectionMember
+            && m.managedSectionId === sectionFilter));
+    const matchesManagedSection = !canManageMembership || isAdmin
+      || (showOnlyHomeMembers ? m.isHomeSectionMember : m.isManagedSectionMember);
     return matchesSearch
       && matchesSection
+      && matchesManagedSection
       && (!facultyFilter || (m.facultyName || '').toLocaleLowerCase('hr').includes(facultyFilter.trim().toLocaleLowerCase('hr')))
       && (!membershipFilter || m.membershipLevel === membershipFilter)
       && (!birthYearFilter || String(m.birthYear) === birthYearFilter);
@@ -316,7 +341,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
           />
         );
       case 'section': return member.homeSection?.name || '-';
-      case 'updated': return updatedThisAcademicYear(member.certificateApprovedAt) ? 'Da' : 'Ne';
+      case 'updated': return <AcademicYearUpdateStatus certificateApprovedAt={member.certificateApprovedAt} />;
       case 'faculty': return member.facultyName || '-';
       case 'membershipLevel': return <MembershipLabel value={member.membershipLevel} />;
       case 'birthYear': return member.birthYear || '-';
@@ -402,6 +427,17 @@ export default function MembersList({ isAdmin, canManageMembership }) {
           Savjet
         </button>
       </div>
+
+      {!isAdmin && canManageMembership && (
+        <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-content-secondary">
+          <input
+            type="checkbox"
+            checked={showOnlyHomeMembers}
+            onChange={(event) => setShowOnlyHomeMembers(event.target.checked)}
+          />
+          Vidi samo matične
+        </label>
+      )}
 
       <div className="mb-4">
         <input
@@ -775,6 +811,9 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
                 <option value="CLAN">Član</option>
                 <option value="VODITELJ_SEKCIJE">Voditelj sekcije</option>
                 <option value="ADMINISTRATOR">Administrator</option>
+                <option value="NADZORNI">Nadzorni</option>
+                <option value="SANKER">Šef šanka</option>
+                <option value="VODITELJ_PROGRAMA">Voditelj programa</option>
               </select>
             </div>
 

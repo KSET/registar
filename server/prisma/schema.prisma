@@ -31,6 +31,9 @@ enum AppRole {
   CLAN
   VODITELJ_SEKCIJE
   ADMINISTRATOR
+  SANKER
+  VODITELJ_PROGRAMA
+  NADZORNI
 }
 
 enum PendingStatus {

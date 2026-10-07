@@ -11,6 +11,14 @@ import MembershipLabel from '../components/MembershipLabel';
 import { GENDER_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
 
 const FACULTY_OTHER = 'OTHER';
+const APP_ROLE_LABELS = {
+  CLAN: 'Član',
+  VODITELJ_SEKCIJE: 'Voditelj sekcije',
+  ADMINISTRATOR: 'Administrator',
+  NADZORNI: 'Nadzorni',
+  SANKER: 'Šef šanka',
+  VODITELJ_PROGRAMA: 'Voditelj programa',
+};
 
 function linkEmailUrl() {
   return `/api/auth/google/link?token=${encodeURIComponent(getToken())}`;
@@ -281,7 +289,12 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
                 '-'
               )}
             </InfoRow>
-            {isAdmin && <InfoRow label="Rola" value={member.appRole} />}
+            {isAdmin && (
+              <InfoRow
+                label="Uloga"
+                value={APP_ROLE_LABELS[member.appRole]}
+              />
+            )}
           </Card>
 
           <Card title="Ostalo">
@@ -297,9 +310,9 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             {certError && <Alert kind="error">{certError}</Alert>}
 
             {pendingCert ? (
-              <p className="text-sm text-content-secondary">
-                Potvrda je poslana i čeka odobrenje voditelja.
-              </p>
+              <Alert kind="success">
+                Dokument je zabilježen i čeka pregled voditelja. Ne možete poslati novi dok se ovaj ne pregleda.
+              </Alert>
             ) : certValid ? (
               <p className="text-sm text-content-secondary">
                 Vaša potvrda je valjana do {formatDate(member.certificateValidUntil)}. Nova se može učitati nakon isteka.

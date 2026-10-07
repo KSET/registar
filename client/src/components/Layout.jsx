@@ -10,7 +10,7 @@ function navClass({ isActive }) {
   ].join(' ');
 }
 
-export default function Layout({ isLeaderOrAdmin, isAdmin, onLogout, linkMessage, onDismissLinkMessage }) {
+export default function Layout({ isLeaderOrAdmin, canViewMembers, isAdmin, onLogout, linkMessage, onDismissLinkMessage }) {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -31,7 +31,7 @@ export default function Layout({ isLeaderOrAdmin, isAdmin, onLogout, linkMessage
           Zahtjevi
         </NavLink>
       )}
-      {isLeaderOrAdmin && (
+      {canViewMembers && (
         <NavLink to="/clanovi" className={navClass} onClick={closeMenu}>
           Članovi
         </NavLink>

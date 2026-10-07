@@ -381,11 +381,16 @@ router.get('/me', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Član nije pronađen.' });
     }
 
+    const pendingChanges = await prisma.pendingFieldChange.findMany({
+      where: { memberId, status: 'PENDING' },
+      select: { id: true, fieldName: true, newValue: true, createdAt: true },
+    });
+
     res.json({
       email,
       isNewUser: false,
       hasPendingApplication: false,
-      member,
+      member: { ...member, pendingChanges },
     });
   } catch (err) {
     console.error('Get me error:', err);

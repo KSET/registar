@@ -121,15 +121,16 @@ function App() {
   }
 
   const appRole = user?.member?.appRole || user?.appRole;
-  const isLeaderOrAdmin = appRole === 'VODITELJ_SEKCIJE' || appRole === 'ADMINISTRATOR';
-  const isAdmin = appRole === 'ADMINISTRATOR';
+  const isAdmin = ['ADMINISTRATOR', 'NADZORNI'].includes(appRole);
+  const isLeaderOrAdmin = appRole === 'VODITELJ_SEKCIJE' || isAdmin;
+  const canViewMembers = isLeaderOrAdmin || ['SANKER', 'VODITELJ_PROGRAMA'].includes(appRole);
 
   const renderHome = () => {
     if (!user.isNewUser && user.member) {
       return (
         <MemberView
           member={user.member}
-          isAdmin={appRole === 'ADMINISTRATOR'}
+          isAdmin={isAdmin}
           onUpdated={(updated) =>
             setUser((prev) => ({ ...prev, member: updated }))
           }
@@ -156,6 +157,7 @@ function App() {
               <Layout
                 user={user}
                 isLeaderOrAdmin={isLeaderOrAdmin}
+                canViewMembers={canViewMembers}
                 isAdmin={isAdmin}
                 onLogout={handleLogout}
                 linkMessage={linkMessage}
@@ -170,7 +172,7 @@ function App() {
             />
             <Route
               path="/clanovi"
-              element={isLeaderOrAdmin ? <MembersList isAdmin={isAdmin} canManageMembership /> : <Navigate to="/" replace />}
+              element={canViewMembers ? <MembersList isAdmin={isAdmin} canManageMembership={isLeaderOrAdmin} /> : <Navigate to="/" replace />}
             />
             <Route
               path="/nadzorna-ploca"

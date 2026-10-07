@@ -3,6 +3,7 @@ const multer = require('multer');
 const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
 const { verifyCurrentRole } = require('../middleware/verifyRole');
+const { hasAdminRole } = require('../middleware/authorize');
 const { logAction, logError } = require('../utils/auditLog');
 const { isKsetEmail } = require('../utils/email');
 const { isValidOib } = require('../utils/oib');
@@ -466,13 +467,13 @@ router.get('/section', authenticateToken, verifyCurrentRole, async (req, res) =>
   try {
     const { appRole, memberId } = req.user;
 
-    if (!appRole || appRole === 'CLAN') {
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
     let pendingList;
 
-    if (appRole === 'ADMINISTRATOR') {
+    if (hasAdminRole(appRole)) {
       pendingList = await prisma.pendingMember.findMany({
         where: { status: 'PENDING' },
         include: { homeSection: true },
@@ -514,7 +515,7 @@ router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => 
   try {
     const { appRole, memberId } = req.user;
 
-    if (!appRole || appRole === 'CLAN') {
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -564,7 +565,7 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
   try {
     const { appRole, memberId } = req.user;
 
-    if (!appRole || appRole === 'CLAN') {
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 

@@ -4,6 +4,7 @@ const multer = require('multer');
 const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
 const { verifyCurrentRole } = require('../middleware/verifyRole');
+const { hasAdminRole } = require('../middleware/authorize');
 const { logAction } = require('../utils/auditLog');
 const { isXlsxBuffer } = require('../utils/fileValidation');
 const { parseSectionSheets } = require('../utils/importSections');
@@ -44,7 +45,7 @@ async function getExistingHonoraryNames() {
 }
 
 function requireAdmin(req, res) {
-  if (req.user.appRole !== 'ADMINISTRATOR') {
+  if (!hasAdminRole(req.user.appRole)) {
     res.status(403).json({ error: 'Nemate ovlasti.' });
     return false;
   }

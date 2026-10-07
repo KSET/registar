@@ -2,6 +2,7 @@ const express = require('express');
 const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
 const { verifyCurrentRole } = require('../middleware/verifyRole');
+const { hasAdminRole } = require('../middleware/authorize');
 const { logAction, logError } = require('../utils/auditLog');
 const { parsePositiveIntParam, checkFieldLength } = require('../utils/requestValidation');
 
@@ -11,7 +12,7 @@ const router = express.Router();
 router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole } = req.user;
-    if (!appRole || appRole === 'CLAN') {
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -28,7 +29,7 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
 // Admin-only: add an honorary member - just a name, nothing else is tracked.
 router.post('/', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
-    if (req.user.appRole !== 'ADMINISTRATOR') {
+    if (!hasAdminRole(req.user.appRole)) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -60,7 +61,7 @@ router.post('/', authenticateToken, verifyCurrentRole, async (req, res) => {
 // Admin-only: remove an honorary member.
 router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
-    if (req.user.appRole !== 'ADMINISTRATOR') {
+    if (!hasAdminRole(req.user.appRole)) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 

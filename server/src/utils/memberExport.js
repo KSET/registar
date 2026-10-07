@@ -24,6 +24,9 @@ const ROLE_LABELS = {
   CLAN: 'Član',
   VODITELJ_SEKCIJE: 'Voditelj sekcije',
   ADMINISTRATOR: 'Administrator',
+  NADZORNI: 'Nadzorni',
+  SANKER: 'Šef šanka',
+  VODITELJ_PROGRAMA: 'Voditelj programa',
 };
 
 const COLUMNS = [

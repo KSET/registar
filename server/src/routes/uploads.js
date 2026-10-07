@@ -5,6 +5,7 @@ const fs = require('fs');
 const prisma = require('../lib/prisma');
 const { authenticateToken } = require('../middleware/auth');
 const { verifyCurrentRole } = require('../middleware/verifyRole');
+const { hasAdminRole } = require('../middleware/authorize');
 const { logAction, logError } = require('../utils/auditLog');
 const { parsePositiveIntParam } = require('../utils/requestValidation');
 const { isPdfBuffer, normalizePdfBuffer } = require('../utils/fileValidation');
@@ -64,7 +65,7 @@ function certificateFilePath(filename) {
 
 // Can viewer see targetMember's certificate?
 async function canView(viewer, targetMemberId) {
-  if (viewer.appRole === 'ADMINISTRATOR') return true;
+  if (hasAdminRole(viewer.appRole)) return true;
   if (viewer.memberId === targetMemberId) return true;
   if (viewer.appRole === 'VODITELJ_SEKCIJE') {
     const [leader, target] = await Promise.all([
@@ -77,7 +78,30 @@ async function canView(viewer, targetMemberId) {
 }
 
 // POST /api/uploads/certificate — existing member re-uploads (profile flow)
-router.post('/certificate', authenticateToken, (req, res) => {
+router.post('/certificate', authenticateToken, async (req, res) => {
+  if (!req.user.memberId) {
+    return res.status(403).json({ error: 'Samo registrirani član može poslati potvrdu.' });
+  }
+
+  try {
+    const existing = await prisma.pendingFieldChange.findFirst({
+      where: {
+        memberId: req.user.memberId,
+        fieldName: 'certificatePath',
+        status: 'PENDING',
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      return res.status(409).json({
+        error: 'Već ste poslali potvrdu na odobrenje. Pričekajte da je voditelj pregleda.',
+      });
+    }
+  } catch (err) {
+    console.error('Check pending certificate upload error:', err);
+    return res.status(500).json({ error: 'Greška na serveru.' });
+  }
+
   upload.single('certificate')(req, res, async (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'Datoteka nije priložena.' });
@@ -105,7 +129,9 @@ router.post('/certificate', authenticateToken, (req, res) => {
         where: { memberId, fieldName: 'certificatePath', status: 'PENDING' },
       });
       if (existing) {
-        return res.status(400).json({ error: 'Već ste poslali potvrdu na odobrenje.' });
+        return res.status(409).json({
+          error: 'Već ste poslali potvrdu na odobrenje. Pričekajte da je voditelj pregleda.',
+        });
       }
 
       const filename = await saveCertificateBuffer(member.firstName, member.lastName, req.file.buffer);
@@ -115,7 +141,9 @@ router.post('/certificate', authenticateToken, (req, res) => {
       });
 
       await logAction(prisma, 'certificate_uploaded', { userId: memberId, details: { filename } });
-      res.status(201).json({ message: 'Potvrda je poslana voditelju na odobrenje.' });
+      res.status(201).json({
+        message: 'Dokument je zabilježen i čeka pregled voditelja. Ne možete poslati novi dok se ovaj ne pregleda.',
+      });
     } catch (e) {
       await logError(prisma, 'certificate_upload', e, { userId: memberId });
       res.status(500).json({ error: 'Greška na serveru.' });
@@ -167,7 +195,7 @@ router.get('/certificate/:memberId', authenticateToken, verifyCurrentRole, async
 router.get('/pending-certificate/:pendingId', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
-    if (!appRole || appRole === 'CLAN') {
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
