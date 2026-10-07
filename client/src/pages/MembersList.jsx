@@ -578,9 +578,14 @@ function InfoRow({ label, value, children }) {
   );
 }
 
-function MembershipManager({ member, onSaved }) {
+function MembershipManager({ member, lookups, onSaved }) {
   const [membershipLevel, setMembershipLevel] = useState(member.membershipLevel);
   const [cardNumber, setCardNumber] = useState(member.cardNumber || '');
+  const [sectionIds, setSectionIds] = useState(
+    (member.sections || [])
+      .map(({ section }) => section.id)
+      .filter((id) => id !== member.homeSectionId)
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -592,7 +597,11 @@ function MembershipManager({ member, onSaved }) {
       const res = await fetch(`/api/members/${member.id}/management`, {
         method: 'PATCH',
         headers: jsonHeaders(),
-        body: JSON.stringify({ membershipLevel, cardNumber }),
+        body: JSON.stringify({
+          membershipLevel,
+          cardNumber,
+          sectionIds: sectionIds.map(Number),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -622,6 +631,13 @@ function MembershipManager({ member, onSaved }) {
             <input id="managed-card-number" className="input" value={cardNumber} onChange={(event) => setCardNumber(event.target.value)} />
           </div>
         </div>
+        <MultiCheckDropdown
+          name="sectionIds"
+          label="Pridružene sekcije"
+          options={lookups.sections.filter((section) => String(section.id) !== String(member.homeSectionId))}
+          value={sectionIds}
+          onChange={(_, next) => setSectionIds(next)}
+        />
         {error && <Alert kind="error">{error}</Alert>}
         <button type="submit" className="btn-primary" disabled={saving}>
           {saving ? 'Spremam...' : 'Spremi'}
@@ -780,6 +796,7 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
       {canManageMembership && member.canManageMembership && !isLimited && !editing && (
         <MembershipManager
           member={member}
+          lookups={lookups}
           onSaved={(changes) => {
             onUpdated({ ...member, ...changes });
             setMessage('Podatci o članstvu su spremljeni.');
@@ -787,12 +804,14 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
         />
       )}
 
-      {isAdmin && !isLimited && !editing && (
+      {(isAdmin || (canManageMembership && member.canManageMembership)) && !isLimited && !editing && (
         <Card title="Administracija">
           <div className="flex flex-wrap gap-3">
-            <button className="btn-secondary" onClick={() => setEditing(true)}>
-              Uredi podatke
-            </button>
+            {isAdmin && (
+              <button className="btn-secondary" onClick={() => setEditing(true)}>
+                Uredi podatke
+              </button>
+            )}
             <button
               className="btn-secondary border-state-error text-state-error hover:bg-state-error/10"
               onClick={() => setDeleteConfirmOpen(true)}

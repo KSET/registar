@@ -280,7 +280,15 @@ router.patch('/:id/management', authenticateToken, verifyCurrentRole, async (req
     const targetId = parsePositiveIntParam(req.params.id);
     if (targetId === null) return res.status(400).json({ error: 'Nevažeći ID člana.' });
 
-    const target = await prisma.member.findUnique({ where: { id: targetId } });
+    const target = await prisma.member.findUnique({
+      where: { id: targetId },
+      select: {
+        id: true,
+        homeSectionId: true,
+        membershipLevel: true,
+        sections: { select: { sectionId: true } },
+      },
+    });
     if (!target) return res.status(404).json({ error: 'Član nije pronađen.' });
 
     if (appRole === 'VODITELJ_SEKCIJE') {
@@ -308,12 +316,60 @@ router.patch('/:id/management', authenticateToken, verifyCurrentRole, async (req
         data.cardNumber = null;
       }
     }
-    if (!Object.keys(data).length) return res.status(400).json({ error: 'Nema podataka za spremanje.' });
 
-    const updated = await prisma.member.update({ where: { id: targetId }, data });
+    const relationUpdates = {};
+    if ('sectionIds' in req.body) {
+      const result = validateIdArray(req.body.sectionIds, 'sectionIds');
+      if (!result.ok) return res.status(400).json({ error: result.error });
+      if (new Set(result.ids).size !== result.ids.length) {
+        return res.status(400).json({ error: 'Pridružene sekcije sadrže duplikate.' });
+      }
+      if (result.ids.includes(target.homeSectionId)) {
+        return res.status(400).json({ error: 'Matična sekcija ne može biti i pridružena sekcija.' });
+      }
+
+      const existingSectionIds = new Set(target.sections.map(({ sectionId }) => sectionId));
+      const addedSectionIds = result.ids.filter((id) => !existingSectionIds.has(id));
+      if (target.membershipLevel === 'PRIDRUZENO' && addedSectionIds.length > 0) {
+        const mediaSection = await prisma.section.findUnique({
+          where: { name: 'Media' },
+          select: { id: true },
+        });
+        if (!mediaSection || addedSectionIds.some((id) => id !== mediaSection.id)) {
+          return res.status(400).json({
+            error: 'Plavi članovi mogu odabrati samo Mediju kao novu pridruženu sekciju.',
+          });
+        }
+      }
+
+      const existingSections = await prisma.section.findMany({
+        where: { id: { in: result.ids } },
+        select: { id: true },
+      });
+      if (existingSections.length !== result.ids.length) {
+        return res.status(400).json({ error: 'Jedna ili više odabranih sekcija ne postoje.' });
+      }
+
+      relationUpdates.sections = {
+        deleteMany: {},
+        create: result.ids.map((id) => ({ sectionId: id })),
+      };
+    }
+    if (!Object.keys(data).length && !Object.keys(relationUpdates).length) {
+      return res.status(400).json({ error: 'Nema podataka za spremanje.' });
+    }
+
+    const updated = await prisma.member.update({
+      where: { id: targetId },
+      data: { ...data, ...relationUpdates },
+      include: { sections: { include: { section: true } } },
+    });
     await logAction(prisma, 'member_management_fields_updated', {
       userId: memberId,
-      details: { targetId, updatedFields: Object.keys(data) },
+      details: {
+        targetId,
+        updatedFields: [...Object.keys(data), ...Object.keys(relationUpdates)],
+      },
     });
     res.json(updated);
   } catch (err) {
@@ -792,11 +848,11 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   }
 });
 
-// Admin-only: permanently delete a member.
+// Admins may delete any member; section leaders may delete members of their section.
 router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId: actorId } = req.user;
-    if (!hasAdminRole(appRole)) {
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -808,6 +864,22 @@ router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => 
     const target = await prisma.member.findUnique({ where: { id: targetId } });
     if (!target) {
       return res.status(404).json({ error: 'Član nije pronađen.' });
+    }
+
+    if (appRole === 'VODITELJ_SEKCIJE') {
+      if (targetId === actorId || hasAdminRole(target.appRole)) {
+        return res.status(403).json({ error: 'Nemate ovlasti izbrisati ovog člana.' });
+      }
+
+      const leader = await prisma.member.findUnique({
+        where: { id: actorId },
+        select: { managedSectionId: true },
+      });
+      if (!leader?.managedSectionId || target.homeSectionId !== leader.managedSectionId) {
+        return res.status(403).json({
+          error: 'Možete brisati samo članove čija je matična sekcija vaša sekcija.',
+        });
+      }
     }
 
     if (hasAdminRole(target.appRole)) {
