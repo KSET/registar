@@ -16,6 +16,9 @@ const GENDER_LABELS = Object.fromEntries(GENDER_OPTIONS.map((o) => [o.value, o.l
 const ROLE_LABELS = {
   CLAN: 'Član',
   VODITELJ_SEKCIJE: 'Voditelj sekcije',
+  SANKER: 'Šef šanka',
+  VODITELJ_PROGRAMA: 'Voditelj programa',
+  NADZORNI: 'Nadzorni',
   ADMINISTRATOR: 'Administrator',
   NADZORNI: 'Nadzorni',
   SANKER: 'Šef šanka',
@@ -830,6 +833,9 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
               <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
                 <option value="CLAN">Član</option>
                 <option value="VODITELJ_SEKCIJE">Voditelj sekcije</option>
+                <option value="SANKER">Šef šanka</option>
+                <option value="VODITELJ_PROGRAMA">Voditelj programa</option>
+                <option value="NADZORNI">Nadzorni</option>
                 <option value="ADMINISTRATOR">Administrator</option>
                 <option value="NADZORNI">Nadzorni</option>
                 <option value="SANKER">Šef šanka</option>

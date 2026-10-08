@@ -493,7 +493,7 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
 
-    if (!appRole || appRole === 'CLAN') {
+    if (!['ADMINISTRATOR', 'VODITELJ_SEKCIJE'].includes(appRole)) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -630,7 +630,7 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
 
-    if (!appRole || appRole === 'CLAN') {
+    if (!['ADMINISTRATOR', 'VODITELJ_SEKCIJE'].includes(appRole)) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
