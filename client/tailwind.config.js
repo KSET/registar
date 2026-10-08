@@ -5,20 +5,20 @@ export default {
     extend: {
       colors: {
         brand: {
-          orange: '#F68C1E',
-          'orange-hover': '#ff9d38',
-          dark: '#040C12',
+          orange: '#F16F18',
+          'orange-hover': '#FE7929',
+          dark: '#111111',
         },
         surface: {
-          base: '#2b2b2b',
-          raised: '#3b3b3b',
-          overlay: '#484848',
-          border: '#565656',
+          base: '#111111',
+          raised: '#1b1b1b',
+          overlay: '#242424',
+          border: '#3a342f',
         },
         content: {
-          primary: '#FFFFFF',
-          secondary: '#C4C4C4',
-          muted: '#8A8A8A',
+          primary: '#F3F0EC',
+          secondary: '#C6C0BB',
+          muted: '#88827D',
         },
         state: {
           error: '#F87171',
@@ -26,7 +26,8 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Open Sans', 'system-ui', 'sans-serif'],
+        display: ['Roboto Slab', 'Georgia', 'serif'],
       },
     },
   },

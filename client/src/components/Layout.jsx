@@ -3,10 +3,10 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 
 function navClass({ isActive }) {
   return [
-    'block px-3 py-2 rounded-md text-sm font-medium transition-colors',
+    'block px-3 py-2 border-b-2 border-transparent text-sm font-medium transition-colors',
     isActive
-      ? 'bg-surface-overlay text-brand-orange'
-      : 'text-content-secondary hover:text-content-primary hover:bg-surface-overlay',
+      ? 'border-brand-orange text-brand-orange'
+      : 'text-content-secondary hover:text-brand-orange',
   ].join(' ');
 }
 
@@ -56,10 +56,10 @@ export default function Layout({ isLeaderOrAdmin, canViewMembers, isAdmin, onLog
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-10 bg-surface-raised border-b border-surface-border">
+      <header className="sticky top-0 z-10 border-t-2 border-brand-orange bg-surface-raised border-b border-surface-border">
         <div className="px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <img src="/logo-arrow.png" alt="KSET" className="h-8" />
+            <img src="/logo-full.png" alt="KSET" className="h-7 w-auto" />
             {/* Desktop */}
             <nav className="hidden md:flex items-center gap-1">
               {navLinks}
