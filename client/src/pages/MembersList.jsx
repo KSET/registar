@@ -77,7 +77,11 @@ function AcademicYearUpdateStatus({ hasCertificateFile, certificateValidUntil })
   const isActive = hasActiveCertificate(hasCertificateFile, certificateValidUntil);
   return (
     <span
-      className={isActive ? 'font-bold text-state-success' : 'font-bold text-state-error'}
+      className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border text-sm leading-none ${
+        isActive
+          ? 'border-brand-orange bg-brand-orange/10 font-bold text-brand-orange'
+          : 'border-surface-border text-content-muted'
+      }`}
       aria-label={isActive ? 'Potvrda je aktivna' : 'Potvrda nije aktivna'}
       title={isActive ? 'Potvrda je aktivna' : 'Potvrda nije aktivna'}
     >
