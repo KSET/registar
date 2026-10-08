@@ -137,6 +137,7 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
   const [search, setSearch] = useState('');
   const [sectionFilter, setSectionFilter] = useState(null); // null = svi
   const [showOnlyHomeMembers, setShowOnlyHomeMembers] = useState(false);
+  const [showOnlyMySection, setShowOnlyMySection] = useState(false);
   const [sortBy, setSortBy] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
   const [facultyFilter, setFacultyFilter] = useState('');
@@ -278,8 +279,10 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
         ? m.isCouncilMember
         : m.homeSection?.id === sectionFilter
           || (!showOnlyHomeMembers && m.associatedSectionIds?.includes(sectionFilter)));
+    const matchesMySection = !showOnlyMySection || m.isManagedSectionMember;
     return matchesSearch
       && matchesSection
+      && matchesMySection
       && (!facultyFilter || (m.facultyName || '').toLocaleLowerCase('hr').includes(facultyFilter.trim().toLocaleLowerCase('hr')))
       && (!membershipFilter || m.membershipLevel === membershipFilter)
       && (!birthYearFilter || String(m.birthYear) === birthYearFilter);
@@ -430,6 +433,16 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
             onChange={(event) => setShowOnlyHomeMembers(event.target.checked)}
           />
           Vidi samo matične
+        </label>
+      )}
+      {!isAdmin && canManageMembership && (
+        <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-content-secondary">
+          <input
+            type="checkbox"
+            checked={showOnlyMySection}
+            onChange={(event) => setShowOnlyMySection(event.target.checked)}
+          />
+          Vidi samo članove svoje sekcije
         </label>
       )}
 
