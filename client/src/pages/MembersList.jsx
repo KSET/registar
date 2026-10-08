@@ -378,17 +378,18 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
   }
 
   return (
-    <PageContainer title="Članovi" maxWidth="max-w-full">
+    <PageContainer maxWidth="max-w-full" compact>
       {message && <Alert kind="success">{message}</Alert>}
       {exportError && <Alert kind="error">{exportError}</Alert>}
 
-      {(isAdmin || canManageMembership) && (
-        <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">Članovi</h1>
+        {(isAdmin || canManageMembership) && (
           <button type="button" className="btn-primary" onClick={handleExport} disabled={exporting}>
             {exporting ? 'Izvozim...' : isAdmin ? 'Izvezi sve u Excel' : 'Izvezi svoju sekciju u Excel'}
           </button>
-        </div>
-      )}
+        )}
+      </div>
       <div className="mb-4 flex flex-wrap gap-2">
         <button
           type="button"

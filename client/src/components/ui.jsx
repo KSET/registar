@@ -1,8 +1,8 @@
-export function PageContainer({ title, children, maxWidth = 'max-w-3xl' }) {
+export function PageContainer({ title, children, maxWidth = 'max-w-3xl', compact = false }) {
   return (
-    <div className="px-6 py-8">
+    <div className={`px-6 ${compact ? 'py-5' : 'py-8'}`}>
       <div className={`${maxWidth} mx-auto`}>
-        {title && <h1 className="text-2xl font-semibold mb-6">{title}</h1>}
+        {title && <h1 className={`text-2xl font-semibold ${compact ? 'mb-4' : 'mb-6'}`}>{title}</h1>}
         {children}
       </div>
     </div>

@@ -10,15 +10,15 @@ export default {
           dark: '#111111',
         },
         surface: {
-          base: '#1b1b1b',
-          raised: '#262626',
-          overlay: '#32302e',
-          border: '#4a413b',
+          base: '#20201f',
+          raised: '#2c2b2a',
+          overlay: '#383634',
+          border: '#514942',
         },
         content: {
           primary: '#F3F0EC',
-          secondary: '#D0C9C3',
-          muted: '#9A928C',
+          secondary: '#D3CCC6',
+          muted: '#A39B94',
         },
         state: {
           error: '#F87171',
