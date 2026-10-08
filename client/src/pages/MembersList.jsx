@@ -5,7 +5,7 @@ import { useLookupData } from '../useLookupData';
 import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
 import { MEMBERSHIP_LEVEL_OPTIONS, DIET_TYPE_OPTIONS, GENDER_OPTIONS, SHIRT_SIZE_OPTIONS } from '../constants';
-import { formatDate } from '../date';
+import { formatDate, isDateOnOrAfterToday } from '../date';
 import { formatAddress } from '../address';
 import { PageContainer, Card, Alert, ConfirmDialog, ErrorPopup } from '../components/ui';
 import { TextField, SelectField, MultiCheckDropdown, CheckboxField, DateField } from '../components/Field';
@@ -41,7 +41,7 @@ const MEMBER_COLUMNS = [
   { key: 'privateEmail', label: 'Privatni e-mail', sortKey: 'privateEmail' },
   { key: 'phone', label: 'Telefon', sortKey: 'phone' },
   { key: 'section', label: 'Matična sekcija', sortKey: 'section' },
-  { key: 'updated', label: 'Ažurirao formu ove akademske godine', sortKey: 'updated' },
+  { key: 'updated', label: 'Aktivna potvrda / odobrena ove godine', sortKey: 'updated' },
   { key: 'faculty', label: 'Fakultet', sortKey: 'faculty' },
   { key: 'membershipLevel', label: 'Boja iskaznice', sortKey: 'membershipLevel' },
   { key: 'birthYear', label: 'Godina rođenja', sortKey: 'birthYear' },
@@ -69,7 +69,8 @@ function facultyDisplay(m) {
   return m.faculty?.name || m.facultyOther || '-';
 }
 
-function updatedThisAcademicYear(certificateApprovedAt) {
+function hasCurrentCertificateOrRecentApproval(certificateApprovedAt, certificateValidUntil) {
+  if (isDateOnOrAfterToday(certificateValidUntil)) return true;
   if (!certificateApprovedAt) return false;
 
   const approvedAt = new Date(certificateApprovedAt);
@@ -84,13 +85,13 @@ function updatedThisAcademicYear(certificateApprovedAt) {
   return approvedAt >= academicYearStart;
 }
 
-function AcademicYearUpdateStatus({ certificateApprovedAt }) {
-  const isUpdated = updatedThisAcademicYear(certificateApprovedAt);
+function AcademicYearUpdateStatus({ certificateApprovedAt, certificateValidUntil }) {
+  const isUpdated = hasCurrentCertificateOrRecentApproval(certificateApprovedAt, certificateValidUntil);
   return (
     <span
       className={isUpdated ? 'font-bold text-state-success' : 'font-bold text-state-error'}
-      aria-label={isUpdated ? 'Ažurirao formu ove akademske godine' : 'Nije ažurirao formu ove akademske godine'}
-      title={isUpdated ? 'Ažurirao formu ove akademske godine' : 'Nije ažurirao formu ove akademske godine'}
+      aria-label={isUpdated ? 'Potvrda je aktivna ili odobrena ove akademske godine' : 'Potvrda nije aktivna'}
+      title={isUpdated ? 'Potvrda je aktivna ili odobrena ove akademske godine' : 'Potvrda nije aktivna'}
     >
       {isUpdated ? '✓' : '✕'}
     </span>
@@ -292,7 +293,8 @@ export default function MembersList({ isAdmin, canManageMembership }) {
             && m.isManagedSectionMember
             && m.managedSectionId === sectionFilter));
     const matchesManagedSection = !canManageMembership || isAdmin
-      || (showOnlyHomeMembers ? m.isHomeSectionMember : m.isManagedSectionMember);
+      || !showOnlyHomeMembers
+      || m.isHomeSectionMember;
     return matchesSearch
       && matchesSection
       && matchesManagedSection
@@ -306,7 +308,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
       switch (sortBy) {
         case 'name': return `${member.firstName} ${member.lastName}`;
         case 'section': return member.homeSection?.name || '';
-        case 'updated': return updatedThisAcademicYear(member.certificateApprovedAt) ? 'Da' : 'Ne';
+        case 'updated': return hasCurrentCertificateOrRecentApproval(member.certificateApprovedAt, member.certificateValidUntil) ? 'Da' : 'Ne';
         case 'faculty': return member.facultyName || '';
         case 'membershipLevel': return MEMBERSHIP_LEVEL_OPTIONS.find((option) => option.value === member.membershipLevel)?.label || '';
         case 'birthYear': return member.birthYear || '';
@@ -345,7 +347,12 @@ export default function MembersList({ isAdmin, canManageMembership }) {
           />
         );
       case 'section': return member.homeSection?.name || '-';
-      case 'updated': return <AcademicYearUpdateStatus certificateApprovedAt={member.certificateApprovedAt} />;
+      case 'updated': return (
+        <AcademicYearUpdateStatus
+          certificateApprovedAt={member.certificateApprovedAt}
+          certificateValidUntil={member.certificateValidUntil}
+        />
+      );
       case 'faculty': return member.facultyName || '-';
       case 'membershipLevel': return <MembershipLabel value={member.membershipLevel} />;
       case 'birthYear': return member.birthYear || '-';

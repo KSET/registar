@@ -393,6 +393,7 @@ const LIST_SELECT = {
   cardNumber: true,
   membershipLevel: true,
   certificateApprovedAt: true,
+  certificateValidUntil: true,
   phone: true,
   faculty: { select: { name: true } },
   facultyOther: true,
@@ -413,6 +414,7 @@ function toListItem(m, limited) {
     cardNumber: m.cardNumber,
     membershipLevel: m.membershipLevel,
     certificateApprovedAt: m.certificateApprovedAt,
+    certificateValidUntil: m.certificateValidUntil,
     phone: m.phone,
     facultyName: m.faculty?.name || m.facultyOther || '',
     homeSection: m.homeSection,
@@ -493,7 +495,7 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
 
-    if (!['ADMINISTRATOR', 'VODITELJ_SEKCIJE'].includes(appRole)) {
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -630,7 +632,7 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
 
-    if (!['ADMINISTRATOR', 'VODITELJ_SEKCIJE'].includes(appRole)) {
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 

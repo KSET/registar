@@ -11,6 +11,7 @@ const { saveCertificateBuffer, deleteCertificate } = require('./uploads');
 const { parsePositiveIntParam, isValidDateOnly, validateIdArray, checkFieldLength } = require('../utils/requestValidation');
 const { isPdfBuffer, normalizePdfBuffer } = require('../utils/fileValidation');
 const { REFERRAL_SOURCE_OPTIONS } = require('../utils/referralSources');
+const { nextCertificateValidUntil } = require('../utils/certificateValidity');
 
 const router = express.Router();
 
@@ -76,14 +77,6 @@ function parseArr(v) {
 }
 function parseBool(v) {
   return v === true || v === 'true';
-}
-
-// Calculate certificateValidUntil: next September 30.
-function nextCertificateValidUntil(now = new Date()) {
-  let year = now.getFullYear();
-  const sept30 = new Date(year, 8, 30);
-  if (now > sept30) year += 1;
-  return new Date(year, 8, 30);
 }
 
 async function deletePendingCertificate(filename) {

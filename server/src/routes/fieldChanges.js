@@ -6,6 +6,7 @@ const { verifyCurrentRole } = require('../middleware/verifyRole');
 const { hasAdminRole } = require('../middleware/authorize');
 const { logAction, logError } = require('../utils/auditLog');
 const { parsePositiveIntParam } = require('../utils/requestValidation');
+const { nextCertificateValidUntil } = require('../utils/certificateValidity');
 const { deleteCertificate } = require('./uploads');
 
 const router = express.Router();
@@ -121,10 +122,7 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
         updateData.certificatePath = change.newValue;
         const now = new Date();
         updateData.certificateApprovedAt = now;
-        let year = now.getFullYear();
-        const sept30 = new Date(year, 8, 30);
-        if (now > sept30) year += 1;
-        updateData.certificateValidUntil = new Date(year, 8, 30);
+        updateData.certificateValidUntil = nextCertificateValidUntil(now);
       } else {
         return res.status(400).json({ error: `Nepodržano polje: ${change.fieldName}` });
       }
