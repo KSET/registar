@@ -41,7 +41,7 @@ const MEMBER_COLUMNS = [
   { key: 'privateEmail', label: 'Privatni e-mail', sortKey: 'privateEmail' },
   { key: 'phone', label: 'Telefon', sortKey: 'phone' },
   { key: 'section', label: 'Matična sekcija', sortKey: 'section' },
-  { key: 'updated', label: 'Aktivna potvrda / odobrena ove godine', sortKey: 'updated' },
+  { key: 'updated', label: 'Aktivna potvrda', sortKey: 'updated' },
   { key: 'faculty', label: 'Fakultet', sortKey: 'faculty' },
   { key: 'membershipLevel', label: 'Boja iskaznice', sortKey: 'membershipLevel' },
   { key: 'birthYear', label: 'Godina rođenja', sortKey: 'birthYear' },
@@ -69,31 +69,19 @@ function facultyDisplay(m) {
   return m.faculty?.name || m.facultyOther || '-';
 }
 
-function hasCurrentCertificateOrRecentApproval(certificateApprovedAt, certificateValidUntil) {
-  if (isDateOnOrAfterToday(certificateValidUntil)) return true;
-  if (!certificateApprovedAt) return false;
-
-  const approvedAt = new Date(certificateApprovedAt);
-  if (Number.isNaN(approvedAt.getTime())) return false;
-
-  const now = new Date();
-  const academicYearStart = new Date(
-    now.getFullYear() - (now.getMonth() < 9 ? 1 : 0),
-    9,
-    1
-  );
-  return approvedAt >= academicYearStart;
+function hasActiveCertificate(hasCertificateFile, certificateValidUntil) {
+  return hasCertificateFile && isDateOnOrAfterToday(certificateValidUntil);
 }
 
-function AcademicYearUpdateStatus({ certificateApprovedAt, certificateValidUntil }) {
-  const isUpdated = hasCurrentCertificateOrRecentApproval(certificateApprovedAt, certificateValidUntil);
+function AcademicYearUpdateStatus({ hasCertificateFile, certificateValidUntil }) {
+  const isActive = hasActiveCertificate(hasCertificateFile, certificateValidUntil);
   return (
     <span
-      className={isUpdated ? 'font-bold text-state-success' : 'font-bold text-state-error'}
-      aria-label={isUpdated ? 'Potvrda je aktivna ili odobrena ove akademske godine' : 'Potvrda nije aktivna'}
-      title={isUpdated ? 'Potvrda je aktivna ili odobrena ove akademske godine' : 'Potvrda nije aktivna'}
+      className={isActive ? 'font-bold text-state-success' : 'font-bold text-state-error'}
+      aria-label={isActive ? 'Potvrda je aktivna' : 'Potvrda nije aktivna'}
+      title={isActive ? 'Potvrda je aktivna' : 'Potvrda nije aktivna'}
     >
-      {isUpdated ? '✓' : '✕'}
+      {isActive ? '✓' : '✕'}
     </span>
   );
 }
@@ -308,7 +296,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
       switch (sortBy) {
         case 'name': return `${member.firstName} ${member.lastName}`;
         case 'section': return member.homeSection?.name || '';
-        case 'updated': return hasCurrentCertificateOrRecentApproval(member.certificateApprovedAt, member.certificateValidUntil) ? 'Da' : 'Ne';
+        case 'updated': return hasActiveCertificate(member.hasCertificateFile, member.certificateValidUntil) ? 'Da' : 'Ne';
         case 'faculty': return member.facultyName || '';
         case 'membershipLevel': return MEMBERSHIP_LEVEL_OPTIONS.find((option) => option.value === member.membershipLevel)?.label || '';
         case 'birthYear': return member.birthYear || '';
@@ -349,7 +337,7 @@ export default function MembersList({ isAdmin, canManageMembership }) {
       case 'section': return member.homeSection?.name || '-';
       case 'updated': return (
         <AcademicYearUpdateStatus
-          certificateApprovedAt={member.certificateApprovedAt}
+          hasCertificateFile={member.hasCertificateFile}
           certificateValidUntil={member.certificateValidUntil}
         />
       );
