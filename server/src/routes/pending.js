@@ -86,6 +86,237 @@ function nextCertificateValidUntil(now = new Date()) {
   return new Date(year, 8, 30);
 }
 
+async function deletePendingCertificate(filename) {
+  if (!filename) return;
+  try {
+    const memberUsesFile = await prisma.member.findFirst({
+      where: { certificatePath: filename },
+      select: { id: true },
+    });
+    if (!memberUsesFile) deleteCertificate(filename);
+  } catch (error) {
+    console.warn('Could not verify pending certificate ownership; leaving the file in place.');
+  }
+}
+
+async function findExistingMember(client, pending) {
+  const email = String(pending.googleEmail || '').trim();
+  const oib = String(pending.fieldData?.oib || '').trim();
+  const emailMatches = await client.member.findMany({
+    where: {
+      OR: [
+        { privateEmail: { equals: email, mode: 'insensitive' } },
+        { ksetEmail: { equals: email, mode: 'insensitive' } },
+      ],
+    },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      oib: true,
+    },
+  });
+
+  const oibMatch = oib
+    ? await client.member.findUnique({
+      where: { oib },
+      select: { id: true, firstName: true, lastName: true, oib: true },
+    })
+    : null;
+
+  if (emailMatches.length > 1) return { member: null, conflict: true };
+  const emailMatch = emailMatches[0] || null;
+  if (emailMatch && oib && emailMatch.oib !== oib) return { member: null, conflict: true };
+  if (emailMatch && oibMatch && emailMatch.id !== oibMatch.id) {
+    return { member: null, conflict: true };
+  }
+
+  const identity = oibMatch || emailMatch;
+  if (!identity) return { member: null, conflict: false };
+
+  const member = await client.member.findUnique({
+    where: { id: identity.id },
+    include: {
+      sections: { select: { sectionId: true } },
+      teams: { select: { teamId: true } },
+      drinks: { select: { drinkId: true } },
+      allergies: { select: { allergyId: true } },
+    },
+  });
+  return { member, conflict: false };
+}
+
+function asDateOnly(value) {
+  if (!value) return null;
+  return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+}
+
+function existingMemberFieldData(member) {
+  return {
+    firstName: member.firstName,
+    lastName: member.lastName,
+    oib: member.oib,
+    dateOfBirth: asDateOnly(member.dateOfBirth),
+    address: member.address,
+    houseNumber: member.houseNumber,
+    postalCode: member.postalCode,
+    city: member.city,
+    gender: member.gender,
+    facultyId: member.facultyId,
+    facultyOther: member.facultyOther,
+    phone: member.phone,
+    privateEmail: member.privateEmail,
+    ksetEmail: member.ksetEmail,
+    certificatePath: member.certificatePath,
+    cardNumber: member.cardNumber,
+    membershipLevel: member.membershipLevel,
+    fullMemberSince: asDateOnly(member.fullMemberSince),
+    homeSectionId: member.homeSectionId,
+    sectionIds: member.sections.map(({ sectionId }) => sectionId).sort((a, b) => a - b),
+    teamIds: member.teams.map(({ teamId }) => teamId).sort((a, b) => a - b),
+    drinkIds: member.drinks.map(({ drinkId }) => drinkId).sort((a, b) => a - b),
+    allergyIds: member.allergies.map(({ allergyId }) => allergyId).sort((a, b) => a - b),
+    dietType: member.dietType,
+    shirtSize: member.shirtSize,
+    transportVolunteer: member.transportVolunteer,
+    acceptedDocuments: member.acceptedDocuments,
+    referralSource: member.referralSource,
+  };
+}
+
+function mergeExistingMemberFields(pending, member) {
+  const fieldData = { ...pending.fieldData };
+  const fieldStatus = { ...pending.fieldStatus };
+  const memberData = existingMemberFieldData(member);
+
+  for (const [field, memberValue] of Object.entries(memberData)) {
+    if (fieldStatus[field] !== 'PENDING') continue;
+    if (fieldData[field] === null && memberValue !== null && memberValue !== undefined) {
+      fieldData[field] = memberValue;
+      fieldStatus[field] = 'APPROVED';
+      continue;
+    }
+
+    const requestValue = fieldData[field];
+    const normalize = (value) => {
+      if (field === 'privateEmail' || field === 'ksetEmail') {
+        return typeof value === 'string' ? value.trim().toLowerCase() : value;
+      }
+      if (Array.isArray(value)) return [...value].sort((a, b) => a - b);
+      return value;
+    };
+    if (JSON.stringify(normalize(requestValue)) === JSON.stringify(normalize(memberValue))) {
+      fieldStatus[field] = 'APPROVED';
+    }
+  }
+
+  return { fieldData, fieldStatus };
+}
+
+async function updateExistingMemberRecord(tx, pending, existingMember, fieldData, fieldStatus) {
+  const identity = await findExistingMember(tx, pending);
+  if (
+    identity.conflict
+    || identity.member?.id !== existingMember.id
+    || identity.member.updatedAt.getTime() !== existingMember.updatedAt.getTime()
+  ) {
+    const error = new Error('Identitet postojećeg člana više nije jednoznačan.');
+    error.code = 'PENDING_MEMBER_IDENTITY_CONFLICT';
+    throw error;
+  }
+
+  const scalarFields = {
+    firstName: 'firstName',
+    lastName: 'lastName',
+    oib: 'oib',
+    dateOfBirth: 'dateOfBirth',
+    address: 'address',
+    houseNumber: 'houseNumber',
+    postalCode: 'postalCode',
+    city: 'city',
+    gender: 'gender',
+    facultyId: 'facultyId',
+    facultyOther: 'facultyOther',
+    phone: 'phone',
+    privateEmail: 'privateEmail',
+    ksetEmail: 'ksetEmail',
+    cardNumber: 'cardNumber',
+    membershipLevel: 'membershipLevel',
+    fullMemberSince: 'fullMemberSince',
+    homeSectionId: 'homeSectionId',
+    dietType: 'dietType',
+    shirtSize: 'shirtSize',
+    transportVolunteer: 'transportVolunteer',
+    acceptedDocuments: 'acceptedDocuments',
+    referralSource: 'referralSource',
+  };
+  const dateFields = new Set(['dateOfBirth', 'fullMemberSince']);
+  const nullableTextFields = new Set([
+    'houseNumber', 'postalCode', 'city', 'facultyOther', 'referralSource',
+  ]);
+  const updateData = {};
+
+  for (const [field, column] of Object.entries(scalarFields)) {
+    if (fieldStatus[field] !== 'APPROVED') continue;
+    const value = fieldData[field];
+    if (dateFields.has(field)) {
+      updateData[column] = value ? new Date(value) : null;
+    } else if (nullableTextFields.has(field)) {
+      updateData[column] = value || null;
+    } else if (field === 'facultyId') {
+      updateData[column] = value || null;
+    } else if (field === 'transportVolunteer' || field === 'acceptedDocuments') {
+      updateData[column] = Boolean(value);
+    } else {
+      updateData[column] = value;
+    }
+  }
+
+  if (fieldStatus.privateEmail === 'APPROVED'
+    && fieldData.privateEmail?.toLowerCase() !== existingMember.privateEmail.toLowerCase()) {
+    updateData.privateEmailVerified = fieldData.privateEmail?.trim().toLowerCase()
+      === pending.googleEmail.trim().toLowerCase();
+  }
+  if (fieldStatus.ksetEmail === 'APPROVED'
+    && fieldData.ksetEmail?.toLowerCase() !== existingMember.ksetEmail?.toLowerCase()) {
+    updateData.ksetEmailVerified = Boolean(fieldData.ksetEmail)
+      && fieldData.ksetEmail.trim().toLowerCase() === pending.googleEmail.trim().toLowerCase();
+  }
+
+  if (fieldStatus.certificatePath === 'APPROVED'
+    && fieldData.certificatePath
+    && fieldData.certificatePath !== existingMember.certificatePath) {
+    updateData.certificatePath = fieldData.certificatePath;
+    updateData.certificateValidUntil = nextCertificateValidUntil();
+    updateData.certificateApprovedAt = new Date();
+  }
+
+  const member = await tx.member.update({
+    where: { id: existingMember.id },
+    data: updateData,
+  });
+
+  const relations = [
+    ['sectionIds', 'memberSection', 'sectionId'],
+    ['teamIds', 'memberTeam', 'teamId'],
+    ['drinkIds', 'memberDrink', 'drinkId'],
+    ['allergyIds', 'memberAllergy', 'allergyId'],
+  ];
+  for (const [field, model, foreignKey] of relations) {
+    if (fieldStatus[field] !== 'APPROVED') continue;
+    await tx[model].deleteMany({ where: { memberId: existingMember.id } });
+    const ids = Array.isArray(fieldData[field]) ? fieldData[field] : [];
+    if (ids.length > 0) {
+      await tx[model].createMany({
+        data: ids.map((id) => ({ memberId: existingMember.id, [foreignKey]: id })),
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  return member;
+}
+
 // GET pending application for current user
 router.get('/me', authenticateToken, async (req, res) => {
   try {
@@ -303,7 +534,7 @@ router.post('/', authenticateToken, (req, res) => {
 
       res.status(201).json(pending);
     } catch (err) {
-      if (certFilename) deleteCertificate(certFilename);
+      if (certFilename) await deletePendingCertificate(certFilename);
       if (err.code === 'P2002') {
         return res.status(409).json({ error: 'Duplikat — prijava već postoji.' });
       }
@@ -446,7 +677,7 @@ router.patch('/me', authenticateToken, (req, res) => {
       });
 
       if (replacingRejectedCertificate && previousRejectedCertificate) {
-        deleteCertificate(previousRejectedCertificate);
+        await deletePendingCertificate(previousRejectedCertificate);
       }
 
       await logAction(prisma, 'pending_application_fields_updated', {
@@ -455,7 +686,7 @@ router.patch('/me', authenticateToken, (req, res) => {
 
       res.json(updated);
     } catch (err) {
-      if (certFilename) deleteCertificate(certFilename);
+      if (certFilename) await deletePendingCertificate(certFilename);
       await logError(prisma, 'pending_application_update', err, { details: { googleEmail: req.user.email } });
       res.status(500).json({ error: 'Greška na serveru.' });
     }
@@ -499,7 +730,20 @@ router.get('/section', authenticateToken, verifyCurrentRole, async (req, res) =>
       });
     }
 
-    res.json(pendingList);
+    const pendingWithExistingMembers = await Promise.all(pendingList.map(async (pending) => {
+      const { member, conflict } = await findExistingMember(prisma, pending);
+      const merged = member ? mergeExistingMemberFields(pending, member) : null;
+      return {
+        ...pending,
+        ...(merged || {}),
+        existingMember: member
+          ? { id: member.id, firstName: member.firstName, lastName: member.lastName }
+          : null,
+        existingMemberConflict: conflict,
+      };
+    }));
+
+    res.json(pendingWithExistingMembers);
   } catch (err) {
     console.error('Get pending section error:', err);
     res.status(500).json({ error: 'Greška na serveru.' });
@@ -540,7 +784,7 @@ router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => 
     }
 
     if (pending.fieldData?.certificatePath) {
-      deleteCertificate(pending.fieldData.certificatePath);
+      await deletePendingCertificate(pending.fieldData.certificatePath);
     }
 
     await prisma.pendingMember.delete({ where: { id: pendingId } });
@@ -591,6 +835,15 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
       return res.status(400).json({ error: 'Ova prijava više nije na čekanju.' });
     }
 
+    const identity = await findExistingMember(prisma, pending);
+    if (identity.conflict) {
+      return res.status(409).json({
+        error: 'E-mail i OIB zahtjeva ne upućuju jednoznačno na istog člana. Ručno provjerite identitet.',
+      });
+    }
+    const existingMember = identity.member;
+    const merged = existingMember ? mergeExistingMemberFields(pending, existingMember) : null;
+
     if (appRole === 'VODITELJ_SEKCIJE') {
       const leader = await prisma.member.findUnique({
         where: { id: memberId },
@@ -602,8 +855,8 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
       }
     }
 
-    const fieldData = pending.fieldData;
-    const fieldStatus = { ...pending.fieldStatus };
+    const fieldData = merged?.fieldData || pending.fieldData;
+    const fieldStatus = { ...(merged?.fieldStatus || pending.fieldStatus) };
 
     for (const [field, decision] of Object.entries(decisions)) {
       if (!['APPROVED', 'REJECTED'].includes(decision)) {
@@ -623,7 +876,7 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
     if (!allReviewed) {
       const saved = await prisma.pendingMember.updateMany({
         where: { id: pendingId, status: 'PENDING', updatedAt: pending.updatedAt },
-        data: { fieldStatus },
+        data: { fieldData, fieldStatus },
       });
       if (saved.count !== 1) {
         return res.status(409).json({ error: 'Prijavu je u međuvremenu pregledao drugi korisnik. Osvježite prikaz.' });
@@ -645,66 +898,86 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
     if (!hasRejected) {
       const data = fieldData;
       const member = await prisma.$transaction(async (tx) => {
-        const createdMember = await tx.member.create({
-        data: {
-          firstName: data.firstName,
-          lastName: data.lastName,
-          oib: data.oib,
-          dateOfBirth: new Date(data.dateOfBirth),
-          address: data.address,
-          houseNumber: data.houseNumber,
-          postalCode: data.postalCode,
-          city: data.city,
-          gender: data.gender,
-          facultyId: data.facultyId || null,
-          facultyOther: data.facultyOther || null,
-          phone: data.phone,
-          privateEmail: data.privateEmail,
-          privateEmailVerified: !data.ksetEmail,
-          ksetEmail: data.ksetEmail,
-          ksetEmailVerified: Boolean(data.ksetEmail),
-          memberSince: new Date(),
-          cardNumber: data.cardNumber || null,
-          membershipLevel: data.membershipLevel,
-          fullMemberSince: data.fullMemberSince ? new Date(data.fullMemberSince) : null,
-          homeSectionId: data.homeSectionId,
-          dietType: data.dietType,
-          shirtSize: data.shirtSize,
-          transportVolunteer: Boolean(data.transportVolunteer),
-          acceptedDocuments: data.acceptedDocuments,
-          referralSource: data.referralSource,
-          certificatePath: data.certificatePath || null,
-          certificateValidUntil: data.certificatePath ? nextCertificateValidUntil() : null,
-          certificateApprovedAt: data.certificatePath ? new Date() : null,
-          appRole: 'CLAN',
-          sections: {
-            create: (data.sectionIds || []).map((sId) => ({ sectionId: sId })),
-          },
-          teams: {
-            create: (data.teamIds || []).map((tId) => ({ teamId: tId })),
-          },
-          drinks: {
-            create: (data.drinkIds || []).map((dId) => ({ drinkId: dId })),
-          },
-          allergies: {
-            create: (data.allergyIds || []).map((aId) => ({ allergyId: aId })),
-          },
-        },
-      });
+        let savedMember;
+        if (existingMember) {
+          savedMember = await updateExistingMemberRecord(
+            tx,
+            pending,
+            existingMember,
+            data,
+            fieldStatus
+          );
+        } else {
+          savedMember = await tx.member.create({
+            data: {
+              firstName: data.firstName,
+              lastName: data.lastName,
+              oib: data.oib,
+              dateOfBirth: new Date(data.dateOfBirth),
+              address: data.address,
+              houseNumber: data.houseNumber,
+              postalCode: data.postalCode,
+              city: data.city,
+              gender: data.gender,
+              facultyId: data.facultyId || null,
+              facultyOther: data.facultyOther || null,
+              phone: data.phone,
+              privateEmail: data.privateEmail,
+              privateEmailVerified: !data.ksetEmail,
+              ksetEmail: data.ksetEmail,
+              ksetEmailVerified: Boolean(data.ksetEmail),
+              memberSince: new Date(),
+              cardNumber: data.cardNumber || null,
+              membershipLevel: data.membershipLevel,
+              fullMemberSince: data.fullMemberSince ? new Date(data.fullMemberSince) : null,
+              homeSectionId: data.homeSectionId,
+              dietType: data.dietType,
+              shirtSize: data.shirtSize,
+              transportVolunteer: Boolean(data.transportVolunteer),
+              acceptedDocuments: data.acceptedDocuments,
+              referralSource: data.referralSource,
+              certificatePath: data.certificatePath || null,
+              certificateValidUntil: data.certificatePath ? nextCertificateValidUntil() : null,
+              certificateApprovedAt: data.certificatePath ? new Date() : null,
+              appRole: 'CLAN',
+              sections: {
+                create: (data.sectionIds || []).map((sectionId) => ({ sectionId })),
+              },
+              teams: {
+                create: (data.teamIds || []).map((teamId) => ({ teamId })),
+              },
+              drinks: {
+                create: (data.drinkIds || []).map((drinkId) => ({ drinkId })),
+              },
+              allergies: {
+                create: (data.allergyIds || []).map((allergyId) => ({ allergyId })),
+              },
+            },
+          });
+        }
 
         const removed = await tx.pendingMember.deleteMany({
           where: { id: pendingId, status: 'PENDING', updatedAt: pending.updatedAt },
         });
         if (removed.count !== 1) throw new Error('Prijava je već obrađena.');
-        return createdMember;
+        return savedMember;
       });
 
       await logAction(prisma, 'pending_application_approved', {
         userId: memberId,
-        details: { pendingId, newMemberId: member.id, googleEmail: pending.googleEmail },
+        details: {
+          pendingId,
+          memberId: member.id,
+          existingMember: Boolean(existingMember),
+          googleEmail: pending.googleEmail,
+        },
       });
 
-      return res.json({ status: 'approved', message: 'Član je prihvaćen.', member });
+      return res.json({
+        status: 'approved',
+        message: existingMember ? 'Podatci postojećeg člana su ažurirani.' : 'Član je prihvaćen.',
+        member,
+      });
     } else {
       const updatedFieldData = { ...fieldData };
       const updatedFieldStatus = { ...fieldStatus };
@@ -735,7 +1008,7 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
       if (saved.count !== 1) {
         return res.status(409).json({ error: 'Prijavu je u međuvremenu pregledao drugi korisnik. Osvježite prikaz.' });
       }
-      if (rejectedCertificate) deleteCertificate(rejectedCertificate);
+      if (rejectedCertificate) await deletePendingCertificate(rejectedCertificate);
 
       const rejectedFields = Object.entries(fieldStatus)
         .filter(([, s]) => s === 'REJECTED')
@@ -752,6 +1025,9 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
       });
     }
   } catch (err) {
+    if (err.code === 'PENDING_MEMBER_IDENTITY_CONFLICT') {
+      return res.status(409).json({ error: err.message });
+    }
     if (err.code === 'P2002') {
       return res.status(409).json({ error: 'Duplikat — član s tim OIB-om, e-mailom ili brojem iskaznice već postoji.' });
     }

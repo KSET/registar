@@ -66,6 +66,8 @@ export default function ApprovalDashboard() {
         email: p.googleEmail,
         section: p.homeSection?.name || '-',
         date: p.createdAt,
+        existingMember: p.existingMember || null,
+        existingMemberConflict: Boolean(p.existingMemberConflict),
         fields: pendingFields,
       };
     });
@@ -209,7 +211,13 @@ export default function ApprovalDashboard() {
               </div>
               <div className="flex items-center gap-4">
                 <span className={`text-xs px-2 py-1 rounded ${r.type === 'application' ? 'bg-brand-orange/15 text-brand-orange' : 'bg-surface-overlay text-content-secondary'}`}>
-                  {r.type === 'application' ? 'Nova prijava' : 'Promjena podataka'}
+                  {r.type === 'application'
+                    ? r.existingMemberConflict
+                      ? 'Provjera identiteta'
+                      : r.existingMember
+                        ? 'Ažuriranje člana'
+                        : 'Nova prijava'
+                    : 'Promjena podataka'}
                 </span>
                 <span className="text-sm text-content-muted">{r.fields.length} polja</span>
                 <span className="text-content-muted">{expandedKey === r.key ? '▲' : '▼'}</span>
@@ -218,6 +226,17 @@ export default function ApprovalDashboard() {
 
             {expandedKey === r.key && (
               <div className="border-t border-surface-border px-5 py-4">
+                {r.existingMember && (
+                  <p className="mb-4 text-sm text-content-secondary">
+                    Zahtjev je povezan s postojećim članom {r.existingMember.firstName} {r.existingMember.lastName}.
+                    Odobrena polja ažurirat će taj zapis.
+                  </p>
+                )}
+                {r.existingMemberConflict && (
+                  <Alert kind="error">
+                    E-mail i OIB upućuju na različite članove. Provjerite identitet prije odobravanja.
+                  </Alert>
+                )}
                 <div className="overflow-x-auto">
                   <table className="table-base mb-4">
                     <thead>
@@ -291,7 +310,7 @@ export default function ApprovalDashboard() {
                     )}
                     <button
                       type="button"
-                      disabled={!allDecided}
+                      disabled={!allDecided || r.existingMemberConflict}
                       onClick={() => setConfirmReq(r)}
                       className="btn-primary"
                     >
@@ -308,7 +327,9 @@ export default function ApprovalDashboard() {
       <ConfirmDialog
         open={!!confirmReq}
         title="Potvrda odluka"
-        message="Jeste li sigurni da želite poslati ove odluke? Ova akcija se ne može poništiti."
+        message={confirmReq?.existingMember
+          ? 'Odobrena polja ažurirat će postojećeg člana. Jeste li sigurni? Ova akcija se ne može poništiti.'
+          : 'Jeste li sigurni da želite poslati ove odluke? Ova akcija se ne može poništiti.'}
         onConfirm={doSubmit}
         onCancel={() => setConfirmReq(null)}
       />
