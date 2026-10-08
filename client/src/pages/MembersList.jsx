@@ -659,10 +659,16 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
   const [error, setError] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
+  const [certificateDeleteConfirmOpen, setCertificateDeleteConfirmOpen] = useState(false);
+  const [removingCertificate, setRemovingCertificate] = useState(false);
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const isLimited = member.limited;
+  const canRemoveCertificate = isAdmin || (canManageMembership && member.canManageMembership);
+  const memberFullName = `${member.firstName} ${member.lastName}`;
+  const canConfirmDelete = deleteConfirmationText.trim() === memberFullName;
 
   const handleOpenCert = async () => {
     try {
@@ -697,6 +703,7 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
   };
 
   const submitDelete = async () => {
+    if (!canConfirmDelete) return;
     setDeleteConfirmOpen(false);
     setError('');
     try {
@@ -713,6 +720,29 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
       onDeleted();
     } catch (err) {
       setError('Mrežna greška.');
+    }
+  };
+
+  const submitRemoveCertificate = async () => {
+    setCertificateDeleteConfirmOpen(false);
+    setError('');
+    setRemovingCertificate(true);
+    try {
+      const res = await fetch(`/api/members/${member.id}/certificate`, {
+        method: 'DELETE',
+        headers: jsonHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Greška pri uklanjanju potvrde.');
+        return;
+      }
+      onUpdated({ ...member, certificatePath: null, certificateValidUntil: null, certificateApprovedAt: null });
+      setMessage('Potvrda o studiranju je uklonjena.');
+    } catch (err) {
+      setError('Mrežna greška.');
+    } finally {
+      setRemovingCertificate(false);
     }
   };
 
@@ -783,6 +813,16 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
                   <span className="block text-xs text-content-muted mt-0.5">
                     Potvrda valjana do {formatDate(member.certificateValidUntil)}
                   </span>
+                  {canRemoveCertificate && (
+                    <button
+                      type="button"
+                      className="mt-2 text-sm text-state-error hover:underline disabled:opacity-50"
+                      onClick={() => setCertificateDeleteConfirmOpen(true)}
+                      disabled={removingCertificate}
+                    >
+                      Ukloni potvrdu
+                    </button>
+                  )}
                 </span>
               ) : (
                 '-'
@@ -820,7 +860,10 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
             )}
             <button
               className="btn-secondary border-state-error text-state-error hover:bg-state-error/10"
-              onClick={() => setDeleteConfirmOpen(true)}
+              onClick={() => {
+                setDeleteConfirmationText('');
+                setDeleteConfirmOpen(true);
+              }}
             >
               Izbriši člana
             </button>
@@ -875,12 +918,51 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
         onCancel={() => setConfirmOpen(false)}
       />
 
+      {deleteConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="card w-full max-w-sm p-6" role="dialog" aria-modal="true" aria-labelledby="delete-member-title">
+            <h3 id="delete-member-title" className="mb-2 text-lg font-semibold">Trajno brisanje člana</h3>
+            <p className="mb-4 text-sm text-content-secondary">
+              Za potvrdu upišite puno ime člana: <strong className="text-content-primary">{memberFullName}</strong>.
+            </p>
+            <input
+              className="input mb-6"
+              type="text"
+              autoComplete="off"
+              aria-label="Puno ime člana za potvrdu brisanja"
+              value={deleteConfirmationText}
+              onChange={(event) => setDeleteConfirmationText(event.target.value)}
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setDeleteConfirmationText('');
+                }}
+              >
+                Odustani
+              </button>
+              <button
+                type="button"
+                className="btn-secondary border-state-error text-state-error hover:bg-state-error/10 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={submitDelete}
+                disabled={!canConfirmDelete}
+              >
+                Trajno izbriši
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
-        open={deleteConfirmOpen}
-        title="Brisanje člana"
-        message={`Trajno izbrisati ${member.firstName} ${member.lastName}? Ova se akcija ne može poništiti.`}
-        onConfirm={submitDelete}
-        onCancel={() => setDeleteConfirmOpen(false)}
+        open={certificateDeleteConfirmOpen}
+        title="Uklanjanje potvrde"
+        message={`Ukloniti potvrdu o studiranju za ${member.firstName} ${member.lastName}? Potvrda koja čeka odobrenje također će biti odbijena i uklonjena.`}
+        onConfirm={submitRemoveCertificate}
+        onCancel={() => setCertificateDeleteConfirmOpen(false)}
       />
 
       <ErrorPopup message={error} onClose={() => setError('')} />

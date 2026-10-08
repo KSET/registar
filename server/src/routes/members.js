@@ -689,6 +689,84 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   }
 });
 
+router.delete('/:id/certificate', authenticateToken, verifyCurrentRole, async (req, res) => {
+  try {
+    const { appRole, memberId: actorId } = req.user;
+    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+      return res.status(403).json({ error: 'Nemate ovlasti.' });
+    }
+
+    const targetId = parsePositiveIntParam(req.params.id);
+    if (targetId === null) {
+      return res.status(400).json({ error: 'Nevažeći ID člana.' });
+    }
+
+    const target = await prisma.member.findUnique({
+      where: { id: targetId },
+      select: { firstName: true, lastName: true, homeSectionId: true, certificatePath: true },
+    });
+    if (!target) {
+      return res.status(404).json({ error: 'Član nije pronađen.' });
+    }
+
+    if (appRole === 'VODITELJ_SEKCIJE') {
+      const leader = await prisma.member.findUnique({
+        where: { id: actorId },
+        select: { managedSectionId: true },
+      });
+      if (!leader?.managedSectionId || target.homeSectionId !== leader.managedSectionId) {
+        return res.status(403).json({ error: 'Možete ukloniti potvrdu samo članovima svoje matične sekcije.' });
+      }
+    }
+
+    const pendingCertificates = await prisma.pendingFieldChange.findMany({
+      where: { memberId: targetId, fieldName: 'certificatePath', status: 'PENDING' },
+      select: { id: true, newValue: true },
+    });
+
+    if (!target.certificatePath && pendingCertificates.length === 0) {
+      return res.status(404).json({ error: 'Član nema potvrdu za uklanjanje.' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.member.update({
+        where: { id: targetId },
+        data: {
+          certificatePath: null,
+          certificateValidUntil: null,
+          certificateApprovedAt: null,
+        },
+      });
+
+      if (pendingCertificates.length > 0) {
+        await tx.pendingFieldChange.updateMany({
+          where: {
+            id: { in: pendingCertificates.map((change) => change.id) },
+            status: 'PENDING',
+          },
+          data: { status: 'REJECTED', reviewedBy: actorId },
+        });
+      }
+    });
+
+    if (target.certificatePath) deleteCertificate(target.certificatePath);
+    pendingCertificates.forEach((change) => deleteCertificate(change.newValue));
+
+    await logAction(prisma, 'member_certificate_removed', {
+      userId: actorId,
+      details: { targetId, name: `${target.firstName} ${target.lastName}` },
+    });
+
+    res.json({ message: 'Potvrda je uklonjena.' });
+  } catch (err) {
+    await logError(prisma, 'member_certificate_remove', err, {
+      userId: req.user.memberId,
+      details: { targetId: req.params.id },
+    });
+    res.status(500).json({ error: 'Greška pri uklanjanju potvrde.' });
+  }
+});
+
 // Admin-only: edit any member's full profile directly (no pending-approval
 // detour - the admin already IS the approver). Role/managedSection changes
 // stay on the dedicated /:id/role route below.
