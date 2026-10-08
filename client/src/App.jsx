@@ -172,7 +172,7 @@ function App() {
             />
             <Route
               path="/clanovi"
-              element={canViewMembers ? <MembersList isAdmin={isAdmin} canManageMembership={isLeaderOrAdmin} /> : <Navigate to="/" replace />}
+              element={canViewMembers ? <MembersList isAdmin={isAdmin} canViewMembers={canViewMembers} canManageMembership={isLeaderOrAdmin} /> : <Navigate to="/" replace />}
             />
             <Route
               path="/nadzorna-ploca"

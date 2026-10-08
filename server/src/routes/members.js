@@ -418,6 +418,7 @@ function toListItem(m, limited) {
     phone: m.phone,
     facultyName: m.faculty?.name || m.facultyOther || '',
     homeSection: m.homeSection,
+    associatedSectionIds: m.sections.map((section) => section.sectionId),
     isCouncilMember: [
       'VODITELJ_SEKCIJE',
       'ADMINISTRATOR',

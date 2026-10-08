@@ -129,7 +129,7 @@ function CopyableValue({ value, label, copyKey, feedback, onCopy }) {
   );
 }
 
-export default function MembersList({ isAdmin, canManageMembership }) {
+export default function MembersList({ isAdmin, canViewMembers, canManageMembership }) {
   const lookups = useLookupData();
   const [searchParams, setSearchParams] = useSearchParams();
   const [members, setMembers] = useState([]);
@@ -277,15 +277,9 @@ export default function MembersList({ isAdmin, canManageMembership }) {
       (sectionFilter === COUNCIL_FILTER
         ? m.isCouncilMember
         : m.homeSection?.id === sectionFilter
-          || (!showOnlyHomeMembers
-            && m.isManagedSectionMember
-            && m.managedSectionId === sectionFilter));
-    const matchesManagedSection = !canManageMembership || isAdmin
-      || !showOnlyHomeMembers
-      || m.isHomeSectionMember;
+          || (!showOnlyHomeMembers && m.associatedSectionIds?.includes(sectionFilter)));
     return matchesSearch
       && matchesSection
-      && matchesManagedSection
       && (!facultyFilter || (m.facultyName || '').toLocaleLowerCase('hr').includes(facultyFilter.trim().toLocaleLowerCase('hr')))
       && (!membershipFilter || m.membershipLevel === membershipFilter)
       && (!birthYearFilter || String(m.birthYear) === birthYearFilter);
@@ -427,7 +421,8 @@ export default function MembersList({ isAdmin, canManageMembership }) {
         </button>
       </div>
 
-      {!isAdmin && canManageMembership && (
+      {sectionFilter !== null && sectionFilter !== COUNCIL_FILTER
+        && canViewMembers && (
         <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-content-secondary">
           <input
             type="checkbox"
