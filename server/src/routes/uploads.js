@@ -67,13 +67,7 @@ function certificateFilePath(filename) {
 async function canView(viewer, targetMemberId) {
   if (hasAdminRole(viewer.appRole)) return true;
   if (viewer.memberId === targetMemberId) return true;
-  if (viewer.appRole === 'VODITELJ_SEKCIJE') {
-    const [leader, target] = await Promise.all([
-      prisma.member.findUnique({ where: { id: viewer.memberId }, select: { managedSectionId: true } }),
-      prisma.member.findUnique({ where: { id: targetMemberId }, select: { homeSectionId: true } }),
-    ]);
-    return Boolean(leader?.managedSectionId && target);
-  }
+  if (viewer.appRole === 'VODITELJ_SEKCIJE') return true;
   return false;
 }
 
@@ -116,6 +110,9 @@ router.post('/certificate', authenticateToken, async (req, res) => {
         where: { id: memberId },
         select: { firstName: true, lastName: true, certificateValidUntil: true },
       });
+      if (!member) {
+        return res.status(404).json({ error: 'Član nije pronađen.' });
+      }
 
       const today = new Date();
       today.setUTCHours(0, 0, 0, 0);
@@ -136,9 +133,26 @@ router.post('/certificate', authenticateToken, async (req, res) => {
 
       const filename = await saveCertificateBuffer(member.firstName, member.lastName, req.file.buffer);
 
-      await prisma.pendingFieldChange.create({
-        data: { memberId, fieldName: 'certificatePath', newValue: filename, status: 'PENDING' },
+      const created = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Member" WHERE "id" = ${memberId} FOR UPDATE`;
+        const pending = await tx.pendingFieldChange.findFirst({
+          where: { memberId, fieldName: 'certificatePath', status: 'PENDING' },
+          select: { id: true },
+        });
+        if (pending) return false;
+
+        await tx.pendingFieldChange.create({
+          data: { memberId, fieldName: 'certificatePath', newValue: filename, status: 'PENDING' },
+        });
+        return true;
       });
+
+      if (!created) {
+        deleteCertificate(filename);
+        return res.status(409).json({
+          error: 'Već ste poslali potvrdu na odobrenje. Pričekajte da je voditelj pregleda.',
+        });
+      }
 
       await logAction(prisma, 'certificate_uploaded', { userId: memberId, details: { filename } });
       res.status(201).json({

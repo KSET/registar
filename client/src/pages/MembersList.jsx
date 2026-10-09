@@ -20,9 +20,6 @@ const ROLE_LABELS = {
   VODITELJ_PROGRAMA: 'Voditelj programa',
   NADZORNI: 'Nadzorni',
   ADMINISTRATOR: 'Administrator',
-  NADZORNI: 'Nadzorni',
-  SANKER: 'Šef šanka',
-  VODITELJ_PROGRAMA: 'Voditelj programa',
 };
 const COUNCIL_FILTER = 'savjet';
 const FACULTY_OTHER = 'OTHER';
@@ -138,6 +135,7 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
   const [searchParams, setSearchParams] = useSearchParams();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [membersError, setMembersError] = useState('');
   const [search, setSearch] = useState('');
   const [sectionFilter, setSectionFilter] = useState(null); // null = svi
   const [showOnlyHomeMembers, setShowOnlyHomeMembers] = useState(false);
@@ -154,6 +152,7 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
     : null;
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
   const [message, setMessage] = useState('');
   const [copyFeedback, setCopyFeedback] = useState(null);
   const [exporting, setExporting] = useState(false);
@@ -247,25 +246,40 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
   useEffect(() => {
     if (selectedId === null) {
       setDetail(null);
+      setDetailError('');
       return;
     }
     let cancelled = false;
     setDetailLoading(true);
+    setDetailError('');
     fetch(`/api/members/${selectedId}`, { headers: authHeaders() })
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Nije moguće učitati podatke o članu.');
+        return data;
+      })
       .then((data) => { if (!cancelled) setDetail(data); })
-      .catch(() => { if (!cancelled) setDetail(null); })
+      .catch((error) => {
+        if (!cancelled) {
+          setDetail(null);
+          setDetailError(error.message || 'Mrežna greška pri učitavanju člana.');
+        }
+      })
       .finally(() => { if (!cancelled) setDetailLoading(false); });
     return () => { cancelled = true; };
   }, [selectedId]);
 
   const load = async () => {
     setLoading(true);
+    setMembersError('');
     try {
       const res = await fetch('/api/members', { headers: authHeaders() });
-      if (res.ok) setMembers(await res.json());
-    } catch (err) {
-      console.error(err);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Nije moguće učitati članove.');
+      setMembers(data);
+    } catch (error) {
+      console.error('Učitavanje članova nije uspjelo.', error);
+      setMembersError(error.message || 'Mrežna greška pri učitavanju članova.');
     } finally {
       setLoading(false);
     }
@@ -354,11 +368,19 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
   }
 
   if (selectedId !== null) {
-    if (detailLoading || !detail) {
+    if (detailLoading || (!detail && !detailError)) {
       return (
         <PageContainer title="Članovi">
           <button onClick={closeMember} className="btn-ghost mb-4">← Natrag na popis</button>
           <p className="text-content-secondary">Učitavanje...</p>
+        </PageContainer>
+      );
+    }
+    if (detailError || !detail) {
+      return (
+        <PageContainer title="Članovi">
+          <button onClick={closeMember} className="btn-ghost mb-4">← Natrag na popis</button>
+          <Alert kind="error">{detailError || 'Nije moguće učitati podatke o članu.'}</Alert>
         </PageContainer>
       );
     }
@@ -367,6 +389,7 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
         member={detail}
         isAdmin={isAdmin}
         canManageMembership={canManageMembership}
+        canViewCertificates={isAdmin || canManageMembership}
         lookups={lookups}
         onBack={closeMember}
         onRoleChanged={() => { closeMember(); load(); }}
@@ -374,6 +397,17 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
         onDeleted={() => { closeMember(); load(); }}
         setMessage={setMessage}
       />
+    );
+  }
+
+  if (membersError) {
+    return (
+      <PageContainer title="Članovi">
+        <Alert kind="error">
+          {membersError}{' '}
+          <button type="button" className="underline" onClick={load}>Pokušaj ponovno</button>
+        </Alert>
+      </PageContainer>
     );
   }
 
@@ -400,7 +434,7 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
               : 'border-surface-border text-content-secondary hover:text-content-primary hover:bg-surface-overlay'
           }`}
         >
-          Sve članovi
+          Svi članovi
         </button>
         {lookups.sections.map((s) => (
           <button
@@ -658,7 +692,7 @@ function MembershipManager({ member, lookups, onSaved }) {
   );
 }
 
-function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, onRoleChanged, onUpdated, onDeleted, setMessage }) {
+function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificates, lookups, onBack, onRoleChanged, onUpdated, onDeleted, setMessage }) {
   const [role, setRole] = useState(member.appRole || 'CLAN');
   const [managedSectionId, setManagedSectionId] = useState(member.managedSectionId ? String(member.managedSectionId) : '');
   const [error, setError] = useState('');
@@ -809,7 +843,7 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
             <InfoRow label="Timovi" value={member.teams?.map((t) => t.team.name).join(', ') || '-'} />
             <InfoRow label="Uloga" value={ROLE_LABELS[member.appRole]} />
             <InfoRow label="Potvrda o studiranju">
-              {member.certificatePath ? (
+              {member.certificatePath && canViewCertificates ? (
                 <span className="block">
                   <button type="button" className="text-brand-orange hover:underline text-sm" onClick={handleOpenCert}>
                     Otvori potvrdu
@@ -829,6 +863,8 @@ function MemberDetail({ member, isAdmin, canManageMembership, lookups, onBack, o
                     </button>
                   )}
                 </span>
+              ) : member.certificatePath ? (
+                'Potvrda je evidentirana.'
               ) : (
                 '-'
               )}

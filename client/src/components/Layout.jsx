@@ -59,7 +59,12 @@ export default function Layout({ isLeaderOrAdmin, canViewMembers, isAdmin, onLog
       <header className="sticky top-0 z-10 border-t-2 border-brand-orange bg-surface-raised border-b border-surface-border">
         <div className="px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <img src="/logo-full.png" alt="KSET" className="h-7 w-auto" />
+            <a href="/" aria-label="Registar članova KSET-a">
+              <img src="/logo-full.png" alt="KSET" className="h-7 w-auto" />
+            </a>
+            <span className="hidden lg:block whitespace-nowrap border-l border-surface-border pl-4 text-sm font-semibold text-content-primary">
+              Registar članova
+            </span>
             {/* Desktop */}
             <nav className="hidden md:flex items-center gap-1">
               {navLinks}

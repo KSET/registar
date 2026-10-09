@@ -496,7 +496,10 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
 
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (
+      !hasAdminRole(appRole)
+      && !['VODITELJ_SEKCIJE', 'SANKER', 'VODITELJ_PROGRAMA'].includes(appRole)
+    ) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -626,14 +629,17 @@ router.get('/stats', authenticateToken, verifyCurrentRole, async (req, res) => {
   }
 });
 
-// Full profile for one member, fetched on demand when a detail page opens.
-// Section leaders may view all member details, but may manage membership only
-// when the member's home section is theirs. Must stay after /me and /stats.
+// Section leaders can view full profiles for every member, but can manage
+// membership only for members in their home section. Must stay after /me
+// and /stats.
 router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
 
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (
+      !hasAdminRole(appRole)
+      && !['VODITELJ_SEKCIJE', 'SANKER', 'VODITELJ_PROGRAMA'].includes(appRole)
+    ) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
