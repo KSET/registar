@@ -16,9 +16,9 @@ export default {
           border: '#514942',
         },
         content: {
-          primary: '#F3F0EC',
-          secondary: '#D3CCC6',
-          muted: '#A39B94',
+          primary: '#FFFFFF',
+          secondary: '#C4C4C4',
+          muted: '#8A8A8A',
         },
         state: {
           error: '#F87171',
@@ -26,8 +26,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Open Sans', 'system-ui', 'sans-serif'],
-        display: ['Roboto Slab', 'Georgia', 'serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
       },
     },
   },
