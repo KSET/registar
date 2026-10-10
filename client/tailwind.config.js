@@ -5,9 +5,9 @@ export default {
     extend: {
       colors: {
         brand: {
-          orange: '#F16F18',
-          'orange-hover': '#FE7929',
-          dark: '#111111',
+          orange: '#F68C1E',
+          'orange-hover': '#ff9d38',
+          dark: '#040C12',
         },
         surface: {
           base: '#20201f',
