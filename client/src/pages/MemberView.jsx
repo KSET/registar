@@ -306,7 +306,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
             <InfoRow label="Discord korisnički ID" value={member.discordId || 'Nije povezan'} padding="py-4" afterBorder="mb-4" />
           </Card>
           <Card title="Potvrda o studiranju">
-            {certMsg && <Alert kind="success">{certMsg}</Alert>}
+            {certMsg && !pendingCert && <Alert kind="success">{certMsg}</Alert>}
             {certError && <Alert kind="error">{certError}</Alert>}
 
             {pendingCert ? (
