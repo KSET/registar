@@ -6,7 +6,7 @@ import { useForm } from '../useForm';
 import { memberValidators } from '../validation';
 import { PageContainer, Card, Alert } from '../components/ui';
 import { TextField, SelectField, MultiCheckDropdown, CheckboxField, DateField } from '../components/Field';
-import { GENDER_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS, REFERRAL_SOURCE_OPTIONS } from '../constants';
+import { GENDER_OPTIONS, DIET_TYPE_OPTIONS, SHIRT_SIZE_OPTIONS, REFERRAL_SOURCE_OPTIONS, MAX_CERTIFICATE_SIZE } from '../constants';
 
 const FACULTY_OTHER = 'OTHER';
 
@@ -124,7 +124,11 @@ export default function RegistrationForm({ email, onSubmitted }) {
         body: fd,
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({
+        error: res.ok
+          ? 'Server je vratio neispravan odgovor.'
+          : `Greška pri slanju (HTTP ${res.status}). Pokušajte ponovo.`,
+      }));
       if (!res.ok) {
         const msg = data.errors ? data.errors.join(' ') : data.error || 'Greška pri slanju.';
         setSubmitError(msg);
@@ -132,7 +136,8 @@ export default function RegistrationForm({ email, onSubmitted }) {
       }
       onSubmitted(data);
     } catch (err) {
-      setSubmitError('Mrežna greška. Pokušajte ponovo.');
+      console.error('Registration submission failed:', err);
+      setSubmitError('Slanje nije uspjelo zbog problema s vezom. Provjerite internetsku vezu i pokušajte ponovo.');
     } finally {
       setSubmitting(false);
     }
@@ -207,7 +212,17 @@ export default function RegistrationForm({ email, onSubmitted }) {
                 <input
                   type="file"
                   accept="application/pdf"
-                  onChange={(e) => setCertFile(e.target.files[0] || null)}
+                  onChange={(e) => {
+                    const file = e.target.files[0] || null;
+                    if (file && file.size > MAX_CERTIFICATE_SIZE) {
+                      setCertFile(null);
+                      setCertError('PDF može biti najviše 5 MB.');
+                      e.target.value = '';
+                      return;
+                    }
+                    setCertError('');
+                    setCertFile(file);
+                  }}
                   className="hidden"
                 />
               </label>
@@ -215,6 +230,7 @@ export default function RegistrationForm({ email, onSubmitted }) {
                 {certFile ? truncate(certFile.name) : 'Nije odabrano'}
               </span>
             </div>
+            <p className="text-xs text-content-muted mt-1">Najveća dopuštena veličina PDF-a je 5 MB.</p>
             {certError && <p className="field-error">{certError}</p>}
           </div>
         </Card>

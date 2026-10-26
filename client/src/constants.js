@@ -1,5 +1,7 @@
 // Field labels and enum options shared across forms and views
 
+export const MAX_CERTIFICATE_SIZE = 5 * 1024 * 1024;
+
 // Kanonski redoslijed polja - prati redoslijed ispunjavanja u RegistrationForm.
 // Koristi se za prikaz polja adminu na odobravanju i u pregledu prijave.
 export const FIELD_ORDER = [

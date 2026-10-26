@@ -10,6 +10,7 @@ import {
   DIET_TYPE_OPTIONS,
   SHIRT_SIZE_OPTIONS,
   REFERRAL_SOURCE_OPTIONS,
+  MAX_CERTIFICATE_SIZE,
 } from '../constants';
 import { PageContainer, Card, Alert } from '../components/ui';
 import { TextField, SelectField, MultiCheckDropdown, CheckboxField, DateField } from '../components/Field';
@@ -141,14 +142,19 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
         body: fd,
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({
+        error: res.ok
+          ? 'Server je vratio neispravan odgovor.'
+          : `Greška pri slanju (HTTP ${res.status}). Pokušajte ponovo.`,
+      }));
       if (!res.ok) {
         setSubmitError(data.error || 'Greška.');
         return;
       }
       onUpdated(data);
     } catch (err) {
-      setSubmitError('Mrežna greška.');
+      console.error('Pending application update failed:', err);
+      setSubmitError('Slanje nije uspjelo zbog problema s vezom. Provjerite internetsku vezu i pokušajte ponovo.');
     } finally {
       setSubmitting(false);
     }
@@ -202,7 +208,17 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
                   <input
                     type="file"
                     accept="application/pdf"
-                    onChange={(e) => setCertFile(e.target.files[0] || null)}
+                    onChange={(e) => {
+                      const file = e.target.files[0] || null;
+                      if (file && file.size > MAX_CERTIFICATE_SIZE) {
+                        setCertFile(null);
+                        setSubmitError('PDF može biti najviše 5 MB.');
+                        e.target.value = '';
+                        return;
+                      }
+                      setSubmitError('');
+                      setCertFile(file);
+                    }}
                     className="hidden"
                   />
                 </label>
@@ -210,6 +226,7 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
                   {certFile ? truncate(certFile.name) : 'Nije odabrano'}
                 </span>
               </div>
+              <p className="text-xs text-content-muted mt-1">Najveća dopuštena veličina PDF-a je 5 MB.</p>
             </div>
           )}
           <div className="flex justify-center">
