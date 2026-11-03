@@ -588,8 +588,49 @@ router.patch('/me', authenticateToken, (req, res) => {
         }
       }
 
+      const hasFacultyId = Object.prototype.hasOwnProperty.call(fields, 'facultyId');
+      const hasFacultyOther = Object.prototype.hasOwnProperty.call(fields, 'facultyOther');
+      if (hasFacultyId !== hasFacultyOther) {
+        return res.status(400).json({ error: 'Odabir fakulteta i naziv moraju se poslati zajedno.' });
+      }
+      if (hasFacultyId) {
+        if (updatedFieldStatus.facultyId !== 'REJECTED' && updatedFieldStatus.facultyOther !== 'REJECTED') {
+          return res.status(400).json({ error: 'Fakultet nije moguće uređivati.' });
+        }
+
+        if (fields.facultyId === null) {
+          if (typeof fields.facultyOther !== 'string' || !fields.facultyOther.trim()) {
+            return res.status(400).json({ error: 'Upišite naziv fakulteta.' });
+          }
+          const lengthError = checkFieldLength('facultyOther', fields.facultyOther);
+          if (lengthError) return res.status(400).json({ error: lengthError });
+          updatedFieldData.facultyId = null;
+          updatedFieldData.facultyOther = fields.facultyOther.trim();
+        } else {
+          if (fields.facultyOther !== null) {
+            return res.status(400).json({ error: 'Za odabrani fakultet nije potreban dodatni naziv.' });
+          }
+          const facultyId = parsePositiveIntParam(fields.facultyId);
+          if (facultyId === null) {
+            return res.status(400).json({ error: 'Odabrani fakultet nije ispravan.' });
+          }
+          const faculty = await prisma.faculty.findUnique({
+            where: { id: facultyId },
+            select: { id: true },
+          });
+          if (!faculty) {
+            return res.status(400).json({ error: 'Odabrani fakultet ne postoji.' });
+          }
+          updatedFieldData.facultyId = facultyId;
+          updatedFieldData.facultyOther = null;
+        }
+        updatedFieldStatus.facultyId = 'PENDING';
+        updatedFieldStatus.facultyOther = 'PENDING';
+      }
+
       for (const [key, value] of Object.entries(fields)) {
         if (key === 'certificatePath') continue; // handled above via file
+        if (key === 'facultyId' || key === 'facultyOther') continue;
         if (nonEditableFields.includes(key)) {
           return res.status(400).json({ error: `Polje "${key}" se ne može mijenjati.` });
         }
@@ -857,6 +898,9 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
       }
       if (fieldStatus[field] === undefined) {
         return res.status(400).json({ error: `Nepoznato polje: ${field}` });
+      }
+      if (field === 'privateEmail' && decision === 'REJECTED') {
+        return res.status(400).json({ error: 'Privatni e-mail se ne može odbiti.' });
       }
       if (fieldStatus[field] !== 'PENDING') {
         continue;

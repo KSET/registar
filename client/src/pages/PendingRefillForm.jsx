@@ -15,6 +15,8 @@ import {
 import { PageContainer, Card, Alert } from '../components/ui';
 import { TextField, SelectField, MultiCheckDropdown, CheckboxField, DateField } from '../components/Field';
 
+const FACULTY_OTHER = 'OTHER';
+
 function displayValue(value) {
   if (Array.isArray(value)) return value.join(', ') || '-';
   if (typeof value === 'boolean') return value ? 'Da' : 'Ne';
@@ -95,12 +97,27 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
   const initialValues = {};
   for (const key of fieldsToRefill) {
     const val = pending.fieldData[key];
-    if (Array.isArray(val)) initialValues[key] = [];
+    if (key === 'facultyId') {
+      initialValues[key] = val ? String(val) : pending.fieldData.facultyOther ? FACULTY_OTHER : '';
+    } else if (Array.isArray(val)) initialValues[key] = [];
     else if (typeof val === 'boolean') initialValues[key] = false;
     else initialValues[key] = '';
   }
+  if (!fieldsToRefill.includes('facultyId')) {
+    initialValues.facultyId = pending.fieldData.facultyId == null
+      ? FACULTY_OTHER
+      : String(pending.fieldData.facultyId);
+  }
+  if (!fieldsToRefill.includes('facultyOther')) {
+    initialValues.facultyOther = pending.fieldData.facultyOther || '';
+  }
 
   const form = useForm(initialValues, memberValidators);
+  const editingFaculty = fieldsToRefill.includes('facultyId') || fieldsToRefill.includes('facultyOther');
+  const facultyOptions = [
+    ...lookups.faculties.map((faculty) => ({ value: String(faculty.id), label: faculty.name })),
+    ...(editingFaculty ? [{ value: FACULTY_OTHER, label: 'Ostalo (upišite)' }] : []),
+  ];
 
   const approvedFields = Object.entries(pending.fieldData).filter(
     ([key]) => pending.fieldStatus[key] === 'APPROVED'
@@ -112,7 +129,10 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
     e.preventDefault();
     setSubmitError('');
 
-    const fieldsToValidateForm = fieldsToRefill.filter((f) => f !== 'certificatePath');
+    const fieldsToValidateForm = fieldsToRefill.filter(
+      (field) => !['certificatePath', 'facultyId', 'facultyOther'].includes(field)
+    );
+    if (editingFaculty) fieldsToValidateForm.push('facultyId', 'facultyOther');
     if (!form.validateAll(fieldsToValidateForm)) {
       setSubmitError('Ispravite označena polja prije slanja.');
       return;
@@ -127,8 +147,16 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
     try {
       const fields = {};
       for (const key of fieldsToRefill) {
-        if (key === 'certificatePath') continue;
+        if (key === 'certificatePath' || key === 'facultyId' || key === 'facultyOther') continue;
         fields[key] = form.values[key];
+      }
+      if (editingFaculty) {
+        fields.facultyId = form.values.facultyId === FACULTY_OTHER
+          ? null
+          : parseInt(form.values.facultyId, 10);
+        fields.facultyOther = form.values.facultyId === FACULTY_OTHER
+          ? form.values.facultyOther.trim()
+          : null;
       }
       if (fields.homeSectionId) fields.homeSectionId = parseInt(fields.homeSectionId);
 
@@ -185,13 +213,40 @@ export default function PendingRefillForm({ pending, fieldsToRefill, onUpdated }
 
       <Card title="Polja za popuniti">
         <form onSubmit={handleSubmit}>
-          {fieldsToRefill.map((key) => (
+          {editingFaculty && (
+            <>
+              <SelectField
+                name="facultyId"
+                label={FIELD_LABELS.facultyId || 'Fakultet'}
+                required
+                options={facultyOptions}
+                value={form.values.facultyId}
+                onChange={form.handleChange}
+                onBlur={form.handleBlur}
+                error={form.showError('facultyId')}
+              />
+              {form.values.facultyId === FACULTY_OTHER && (
+                <TextField
+                  name="facultyOther"
+                  label="Upišite fakultet"
+                  required
+                  value={form.values.facultyOther}
+                  onChange={form.handleChange}
+                  onBlur={form.handleBlur}
+                  error={form.showError('facultyOther')}
+                />
+              )}
+            </>
+          )}
+          {fieldsToRefill
+            .filter((key) => !['facultyId', 'facultyOther'].includes(key))
+            .map((key) => (
             <RefillField
               key={key}
               fieldKey={key}
               form={form}
               lookups={lookups}
-              homeSectionId={values.homeSectionId || pending.homeSectionId}
+              homeSectionId={form.values.homeSectionId || pending.homeSectionId}
             />
           ))}
           {needsCertificate && (

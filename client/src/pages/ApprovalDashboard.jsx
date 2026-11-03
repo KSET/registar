@@ -278,13 +278,15 @@ export default function ApprovalDashboard() {
                               >
                                 Prihvati
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => setDecision(f.name, 'REJECTED')}
-                                className={decisions[f.name] === 'REJECTED' ? 'btn-decision-reject-active' : 'btn-decision-reject'}
-                              >
-                                Odbij
-                              </button>
+                              {!(r.type === 'application' && f.name === 'privateEmail') && (
+                                <button
+                                  type="button"
+                                  onClick={() => setDecision(f.name, 'REJECTED')}
+                                  className={decisions[f.name] === 'REJECTED' ? 'btn-decision-reject-active' : 'btn-decision-reject'}
+                                >
+                                  Odbij
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
