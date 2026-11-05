@@ -123,6 +123,16 @@ function readSavedFilters() {
   return { ...DEFAULT_FILTERS, membershipFilter: [...DEFAULT_FILTERS.membershipFilter] };
 }
 
+// Šifra iskaznice je "SS-GG": slova, crtica, pa godina učlanjenja. Vadimo broj
+// iza (zadnje) crtice za sortiranje; ako crtice nema, uzimamo prvi niz znamenki.
+// Vraća null kad broja nema (npr. prazna šifra) da takvi idu na kraj.
+function cardNumberYear(cardNumber) {
+  if (!cardNumber) return null;
+  const afterDash = String(cardNumber).split('-').pop();
+  const match = /\d+/.exec(afterDash) || /\d+/.exec(String(cardNumber));
+  return match ? Number(match[0]) : null;
+}
+
 function formatBool(value) {
   return value ? 'Da' : 'Ne';
 }
@@ -473,6 +483,28 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
         default: return member[sortBy] || '';
       }
     };
+
+    // Šifra iskaznice je oblika "SS-GG" gdje je GG godina učlanjenja; sortiramo
+    // po tom broju iza crtice, a ne abecedno po slovima ispred njega.
+    if (sortBy === 'cardNumber') {
+      const yearA = cardNumberYear(a.cardNumber);
+      const yearB = cardNumberYear(b.cardNumber);
+      let comparison;
+      if (yearA === yearB) {
+        // Isti (ili nepostojeći) broj - zadrži stabilan abecedni red po šifri.
+        comparison = String(a.cardNumber || '').localeCompare(String(b.cardNumber || ''), 'hr', {
+          sensitivity: 'base',
+          numeric: true,
+        });
+      } else {
+        // Članovi bez šifre (null) idu na kraj neovisno o smjeru sortiranja.
+        if (yearA === null) return 1;
+        if (yearB === null) return -1;
+        comparison = yearA - yearB;
+      }
+      return sortDirection === 'asc' ? comparison : -comparison;
+    }
+
     const comparison = String(getValue(a)).localeCompare(String(getValue(b)), 'hr', {
       sensitivity: 'base',
       numeric: true,
