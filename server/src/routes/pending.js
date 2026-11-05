@@ -33,9 +33,12 @@ const upload = multer({
 const NON_EDITABLE_PENDING_FIELDS = ['membershipLevel', 'cardNumber', 'memberSince'];
 
 // These values do not require applicant or leader decisions: preferences and
-// the optional transport volunteer preference can be updated later.
+// the optional transport volunteer preference can be updated later, and the
+// membership defaults (razina članstva, datum punopravnog članstva),
+// prihvaćanje akata i izvor saznanja za KSET se prihvaćaju automatski.
 const AUTO_APPROVED_FIELDS = [
   'dietType', 'shirtSize', 'drinkIds', 'allergyIds', 'transportVolunteer',
+  'acceptedDocuments', 'referralSource', 'membershipLevel', 'fullMemberSince',
 ];
 
 const requiredPendingText = (label) => (value) =>

@@ -9,9 +9,9 @@ export function PageContainer({ title, children, maxWidth = 'max-w-3xl', compact
   );
 }
 
-export function Card({ title, children, className = '' }) {
+export function Card({ title, children, className = '', style }) {
   return (
-    <div className={`card p-6 mb-6 ${className}`}>
+    <div className={`card p-6 mb-6 ${className}`} style={style}>
       {title && <h2 className="text-lg font-semibold mb-4">{title}</h2>}
       {children}
     </div>

@@ -10,6 +10,32 @@ const MEMBERSHIP_LABELS = Object.fromEntries(MEMBERSHIP_LEVEL_OPTIONS.map((o) =>
 const DIET_LABELS = Object.fromEntries(DIET_TYPE_OPTIONS.map((o) => [o.value, o.label]));
 const GENDER_LABELS = Object.fromEntries(GENDER_OPTIONS.map((o) => [o.value, o.label]));
 
+// Prijava uvijek šalje i facultyId i facultyOther kao zasebna polja. Za
+// pregled ih spajamo u jedan redak "Fakultet" koji prikazuje ono što je član
+// stvarno poslao: odabrani fakultet (po bazi) ili vlastiti upisani naziv.
+// `names` pamti oba stvarna polja da odluka ode na obje strane prema serveru.
+function collapseFacultyFields(fields, fieldData) {
+  const hasFacultyId = fields.some((f) => f.name === 'facultyId');
+  const hasFacultyOther = fields.some((f) => f.name === 'facultyOther');
+  if (!hasFacultyId && !hasFacultyOther) return fields;
+
+  const rest = fields.filter((f) => f.name !== 'facultyId' && f.name !== 'facultyOther');
+  const names = [
+    ...(hasFacultyId ? ['facultyId'] : []),
+    ...(hasFacultyOther ? ['facultyOther'] : []),
+  ];
+  return [
+    ...rest,
+    {
+      name: 'faculty',
+      names,
+      value: fieldData.facultyId != null ? fieldData.facultyId : fieldData.facultyOther,
+      // Signalizira displayValue da za custom unos prikaže tekst kakav jest.
+      isCustomFaculty: fieldData.facultyId == null,
+    },
+  ];
+}
+
 export default function ApprovalDashboard() {
   const lookups = useLookupData();
   const [requests, setRequests] = useState([]);
@@ -54,10 +80,12 @@ export default function ApprovalDashboard() {
 
   const buildRequests = (applications, fieldChanges) => {
     const appReqs = applications.map((p) => {
-      const pendingFields = Object.entries(p.fieldStatus)
-        .filter(([, s]) => s === 'PENDING')
-        .map(([name]) => ({ name, value: p.fieldData[name] }))
-        .sort((a, b) => fieldOrderIndex(a.name) - fieldOrderIndex(b.name));
+      const pendingFields = collapseFacultyFields(
+        Object.entries(p.fieldStatus)
+          .filter(([, s]) => s === 'PENDING')
+          .map(([name]) => ({ name, value: p.fieldData[name] })),
+        p.fieldData
+      ).sort((a, b) => fieldOrderIndex(a.name) - fieldOrderIndex(b.name));
       return {
         key: `app-${p.id}`,
         type: 'application',
@@ -87,12 +115,19 @@ export default function ApprovalDashboard() {
     return [...appReqs, ...fcReqs].sort((a, b) => new Date(a.date) - new Date(b.date));
   };
 
-  const displayValue = (fieldName, value) => {
+  const displayValue = (field, value) => {
+    const fieldName = typeof field === 'object' ? field.name : field;
     if (fieldName === 'membershipLevel') return MEMBERSHIP_LABELS[value] || value;
     if (['dateOfBirth', 'memberSince', 'fullMemberSince'].includes(fieldName)) return formatDate(value);
     if (fieldName === 'dietType') return DIET_LABELS[value] || value;
     if (fieldName === 'gender') return GENDER_LABELS[value] || value;
     if (fieldName === 'homeSectionId') return homeSectionMap[value] || value;
+    // Spojeno polje fakulteta: ako je član odabrao postojeći fakultet, prikaži
+    // naziv iz baze; ako je upisao vlastiti, prikaži taj tekst kakav jest.
+    if (fieldName === 'faculty') {
+      if (typeof field === 'object' && field.isCustomFaculty) return String(value ?? '') || '-';
+      return facultyMap[value] || value || '-';
+    }
     if (fieldName === 'facultyId') return facultyMap[value] || value;
     if (typeof value === 'boolean') return value ? 'Da' : 'Ne';
     if (nameMaps[fieldName]) {
@@ -126,6 +161,17 @@ export default function ApprovalDashboard() {
     ? expandedReq.fields.every((f) => decisions[f.name] === 'APPROVED' || decisions[f.name] === 'REJECTED')
     : false;
 
+  // Spojeni redci (npr. "Fakultet") drže popis stvarnih polja u `names`;
+  // odluku za takav redak primijeni na sva pripadna polja koja server očekuje.
+  const expandDecisions = (req) => {
+    const expanded = {};
+    for (const f of req.fields) {
+      const targets = f.names || [f.name];
+      for (const target of targets) expanded[target] = decisions[f.name];
+    }
+    return expanded;
+  };
+
   const doSubmit = async () => {
     const req = confirmReq;
     setConfirmReq(null);
@@ -136,7 +182,7 @@ export default function ApprovalDashboard() {
         res = await fetch(`/api/pending/${req.id}/review`, {
           method: 'PATCH',
           headers: jsonHeaders(),
-          body: JSON.stringify({ decisions }),
+          body: JSON.stringify({ decisions: expandDecisions(req) }),
         });
       } else {
         const decision = decisions[req.fields[0].name];
@@ -266,7 +312,7 @@ export default function ApprovalDashboard() {
                             ) : (
                               f.name === 'membershipLevel'
                                 ? <MembershipLabel value={f.value} />
-                                : displayValue(f.name, f.value)
+                                : displayValue(f, f.value)
                             )}
                           </td>
                           <td>

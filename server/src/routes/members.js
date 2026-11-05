@@ -378,29 +378,50 @@ router.patch('/:id/management', authenticateToken, verifyCurrentRole, async (req
   }
 });
 
-// Slim by design: the list view only ever renders name/email/phone/section,
-// so that's all this returns - full PII (OIB, address, diet, allergies...)
-// is only fetched per-member via GET /:id when someone actually opens a
-// detail page. Keeps the list fast and keeps sensitive fields off the wire
-// for rows nobody clicks into.
+// The list exposes every member field so the table can offer an on/off
+// toggle for all columns. The same roles that can read this list can already
+// read the full profile (incl. PII) per-member via GET /:id, so surfacing
+// those fields here is not a new disclosure - it just saves a round-trip.
 const LIST_SELECT = {
   id: true,
   firstName: true,
   lastName: true,
+  oib: true,
   dateOfBirth: true,
+  address: true,
+  houseNumber: true,
+  postalCode: true,
+  city: true,
+  gender: true,
   ksetEmail: true,
+  ksetEmailVerified: true,
   privateEmail: true,
+  privateEmailVerified: true,
   cardNumber: true,
   membershipLevel: true,
+  memberSince: true,
+  fullMemberSince: true,
+  dietType: true,
+  shirtSize: true,
+  transportVolunteer: true,
+  acceptedDocuments: true,
   certificatePath: true,
   certificateValidUntil: true,
+  certificateApprovedAt: true,
+  referralSource: true,
+  discordId: true,
   phone: true,
   faculty: { select: { name: true } },
   facultyOther: true,
   homeSectionId: true,
   homeSection: { select: { id: true, name: true } },
-  sections: { select: { sectionId: true } },
+  sections: { select: { sectionId: true, section: { select: { name: true } } } },
+  teams: { select: { team: { select: { name: true } } } },
+  drinks: { select: { drink: { select: { name: true } } } },
+  allergies: { select: { allergy: { select: { name: true } } } },
   appRole: true,
+  createdAt: true,
+  updatedAt: true,
 };
 
 function toListItem(m, limited) {
@@ -408,17 +429,44 @@ function toListItem(m, limited) {
     id: m.id,
     firstName: m.firstName,
     lastName: m.lastName,
+    oib: m.oib,
     birthYear: m.dateOfBirth?.getUTCFullYear() ?? null,
+    dateOfBirth: m.dateOfBirth,
+    address: m.address,
+    houseNumber: m.houseNumber,
+    postalCode: m.postalCode,
+    city: m.city,
+    gender: m.gender,
     ksetEmail: m.ksetEmail,
+    ksetEmailVerified: m.ksetEmailVerified,
     privateEmail: m.privateEmail,
+    privateEmailVerified: m.privateEmailVerified,
     cardNumber: m.cardNumber,
     membershipLevel: m.membershipLevel,
+    memberSince: m.memberSince,
+    fullMemberSince: m.fullMemberSince,
+    dietType: m.dietType,
+    shirtSize: m.shirtSize,
+    transportVolunteer: m.transportVolunteer,
+    acceptedDocuments: m.acceptedDocuments,
     hasCertificateFile: Boolean(m.certificatePath),
     certificateValidUntil: m.certificateValidUntil,
+    certificateApprovedAt: m.certificateApprovedAt,
+    referralSource: m.referralSource,
+    discordId: m.discordId,
     phone: m.phone,
     facultyName: m.faculty?.name || m.facultyOther || '',
     homeSection: m.homeSection,
     associatedSectionIds: m.sections.map((section) => section.sectionId),
+    associatedSectionNames: m.sections
+      .map((section) => section.section?.name)
+      .filter(Boolean),
+    teamNames: m.teams.map((t) => t.team?.name).filter(Boolean),
+    drinkNames: m.drinks.map((d) => d.drink?.name).filter(Boolean),
+    allergyNames: m.allergies.map((a) => a.allergy?.name).filter(Boolean),
+    appRole: m.appRole,
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
     isCouncilMember: [
       'VODITELJ_SEKCIJE',
       'ADMINISTRATOR',

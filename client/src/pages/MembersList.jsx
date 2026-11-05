@@ -13,6 +13,7 @@ import MembershipLabel from '../components/MembershipLabel';
 
 const DIET_LABELS = Object.fromEntries(DIET_TYPE_OPTIONS.map((o) => [o.value, o.label]));
 const GENDER_LABELS = Object.fromEntries(GENDER_OPTIONS.map((o) => [o.value, o.label]));
+const MEMBERSHIP_LABELS = Object.fromEntries(MEMBERSHIP_LEVEL_OPTIONS.map((o) => [o.value, o.label]));
 const ROLE_LABELS = {
   CLAN: 'Član',
   VODITELJ_SEKCIJE: 'Voditelj sekcije',
@@ -31,17 +32,44 @@ const DEFAULT_VISIBLE_COLUMNS = [
   'section',
   'updated',
 ];
+// Every member field exposed by GET /api/members is toggleable as a column.
+// `name` is always shown and is therefore kept out of the toggle list below.
 const MEMBER_COLUMNS = [
   { key: 'name', label: 'Ime i prezime', sortKey: 'name' },
+  { key: 'firstName', label: 'Ime', sortKey: 'firstName' },
+  { key: 'lastName', label: 'Prezime', sortKey: 'lastName' },
+  { key: 'oib', label: 'OIB', sortKey: 'oib' },
   { key: 'cardNumber', label: 'Šifra iskaznice', sortKey: 'cardNumber' },
   { key: 'ksetEmail', label: 'KSET e-mail', sortKey: 'ksetEmail' },
   { key: 'privateEmail', label: 'Privatni e-mail', sortKey: 'privateEmail' },
   { key: 'phone', label: 'Telefon', sortKey: 'phone' },
   { key: 'section', label: 'Matična sekcija', sortKey: 'section' },
+  { key: 'associatedSections', label: 'Pridružene sekcije', sortKey: 'associatedSections' },
   { key: 'updated', label: 'Aktivna potvrda', sortKey: 'updated' },
   { key: 'faculty', label: 'Fakultet', sortKey: 'faculty' },
   { key: 'membershipLevel', label: 'Boja iskaznice', sortKey: 'membershipLevel' },
   { key: 'birthYear', label: 'Godina rođenja', sortKey: 'birthYear' },
+  { key: 'dateOfBirth', label: 'Datum rođenja', sortKey: 'dateOfBirth' },
+  { key: 'address', label: 'Adresa', sortKey: 'address' },
+  { key: 'gender', label: 'Spol', sortKey: 'gender' },
+  { key: 'dietType', label: 'Tip prehrane', sortKey: 'dietType' },
+  { key: 'shirtSize', label: 'Veličina majice', sortKey: 'shirtSize' },
+  { key: 'teams', label: 'Timovi', sortKey: 'teams' },
+  { key: 'drinks', label: 'Pića', sortKey: 'drinks' },
+  { key: 'allergies', label: 'Alergije', sortKey: 'allergies' },
+  { key: 'memberSince', label: 'Datum učlanjenja', sortKey: 'memberSince' },
+  { key: 'fullMemberSince', label: 'Datum punopravnog članstva', sortKey: 'fullMemberSince' },
+  { key: 'certificateValidUntil', label: 'Potvrda vrijedi do', sortKey: 'certificateValidUntil' },
+  { key: 'certificateApprovedAt', label: 'Potvrda odobrena', sortKey: 'certificateApprovedAt' },
+  { key: 'transportVolunteer', label: 'Kombi sekcija', sortKey: 'transportVolunteer' },
+  { key: 'acceptedDocuments', label: 'Prihvaćanje akata', sortKey: 'acceptedDocuments' },
+  { key: 'referralSource', label: 'Kako je saznao/la za KSET', sortKey: 'referralSource' },
+  { key: 'ksetEmailVerified', label: 'KSET e-mail potvrđen', sortKey: 'ksetEmailVerified' },
+  { key: 'privateEmailVerified', label: 'Privatni e-mail potvrđen', sortKey: 'privateEmailVerified' },
+  { key: 'discordId', label: 'Discord ID', sortKey: 'discordId' },
+  { key: 'appRole', label: 'Uloga', sortKey: 'appRole' },
+  { key: 'createdAt', label: 'Kreiran', sortKey: 'createdAt' },
+  { key: 'updatedAt', label: 'Zadnja izmjena', sortKey: 'updatedAt' },
 ];
 const OPTIONAL_MEMBER_COLUMNS = MEMBER_COLUMNS.filter(({ key }) => key !== 'name');
 
@@ -56,6 +84,66 @@ function readSavedColumns() {
     console.warn('Nije moguće učitati spremljene stupce tablice članova.', error);
   }
   return DEFAULT_VISIBLE_COLUMNS;
+}
+
+// Promjena oblika filtera (membershipFilter je sada polje boja, a
+// "Prikaz pridruženih" je zasebna zastavica) pa dižemo verziju ključa da
+// stari spremljeni filteri ne naprave zbrku.
+const FILTERS_STORAGE_KEY = 'members-filters-v2';
+const ASSOCIATED_OPTION = '__associated__';
+const DEFAULT_FILTERS = {
+  search: '',
+  sectionFilter: null,
+  showAssociated: false,
+  showOnlyMySection: false,
+  sortBy: 'name',
+  sortDirection: 'asc',
+  facultyFilter: '',
+  // Po defaultu prikazujemo plave i narančaste; crvene i stare ne.
+  membershipFilter: ['PRIDRUZENO', 'PUNOPRAVNO'],
+  birthYearFilter: '',
+};
+
+const MEMBERSHIP_LEVEL_VALUES = MEMBERSHIP_LEVEL_OPTIONS.map(({ value }) => value);
+
+function readSavedFilters() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FILTERS_STORAGE_KEY) || 'null');
+    if (saved && typeof saved === 'object') {
+      const merged = { ...DEFAULT_FILTERS, ...saved };
+      // membershipFilter mora biti polje valjanih razina članstva.
+      merged.membershipFilter = Array.isArray(merged.membershipFilter)
+        ? merged.membershipFilter.filter((level) => MEMBERSHIP_LEVEL_VALUES.includes(level))
+        : [...DEFAULT_FILTERS.membershipFilter];
+      return merged;
+    }
+  } catch (error) {
+    console.warn('Nije moguće učitati spremljene filtere popisa članova.', error);
+  }
+  return { ...DEFAULT_FILTERS, membershipFilter: [...DEFAULT_FILTERS.membershipFilter] };
+}
+
+function formatBool(value) {
+  return value ? 'Da' : 'Ne';
+}
+
+function formatList(values) {
+  return values && values.length ? values.join(', ') : '-';
+}
+
+// Boja trakice uz lijevi rub retka člana. Redoslijed prioriteta:
+// crvena (počasni) > ljubičasta (pridružen baš ovoj sekciji) >
+// narančasta (punopravni) > plava (pridruženi). Ako ništa ne odgovara,
+// vraća null pa se trakica ne prikazuje.
+function memberStripeColor(member, activeSectionId) {
+  if (member.membershipLevel === 'POCASNO') return '#ef4444'; // red-500
+  const isAssociatedHere = typeof activeSectionId === 'number'
+    && member.homeSection?.id !== activeSectionId
+    && (member.associatedSectionIds || []).includes(activeSectionId);
+  if (isAssociatedHere) return '#a855f7'; // purple-500
+  if (member.membershipLevel === 'PUNOPRAVNO') return '#f97316'; // orange-500
+  if (member.membershipLevel === 'PRIDRUZENO') return '#3b82f6'; // blue-500
+  return null;
 }
 
 function toDateInput(d) {
@@ -136,15 +224,22 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [membersError, setMembersError] = useState('');
-  const [search, setSearch] = useState('');
-  const [sectionFilter, setSectionFilter] = useState(null); // null = svi
-  const [showOnlyHomeMembers, setShowOnlyHomeMembers] = useState(false);
-  const [showOnlyMySection, setShowOnlyMySection] = useState(false);
-  const [sortBy, setSortBy] = useState('name');
-  const [sortDirection, setSortDirection] = useState('asc');
-  const [facultyFilter, setFacultyFilter] = useState('');
-  const [membershipFilter, setMembershipFilter] = useState('');
-  const [birthYearFilter, setBirthYearFilter] = useState('');
+  // "Vidi samo članove svoje sekcije" postoji samo za voditelje sekcija;
+  // ne vraćaj taj toggle iz pohrane drugim ulogama (npr. ako je isti
+  // preglednik ranije koristio voditelj) da ne bi dobili prazan popis.
+  const canUseMySectionFilter = !isAdmin && canManageMembership;
+  const [savedFilters] = useState(readSavedFilters);
+  const [search, setSearch] = useState(savedFilters.search);
+  const [sectionFilter, setSectionFilter] = useState(savedFilters.sectionFilter); // null = svi
+  const [showAssociated, setShowAssociated] = useState(savedFilters.showAssociated);
+  const [showOnlyMySection, setShowOnlyMySection] = useState(
+    canUseMySectionFilter ? savedFilters.showOnlyMySection : false
+  );
+  const [sortBy, setSortBy] = useState(savedFilters.sortBy);
+  const [sortDirection, setSortDirection] = useState(savedFilters.sortDirection);
+  const [facultyFilter, setFacultyFilter] = useState(savedFilters.facultyFilter);
+  const [membershipFilter, setMembershipFilter] = useState(savedFilters.membershipFilter);
+  const [birthYearFilter, setBirthYearFilter] = useState(savedFilters.birthYearFilter);
   const [visibleColumns, setVisibleColumns] = useState(readSavedColumns);
   const selectedMemberParam = searchParams.get('member');
   const selectedId = selectedMemberParam && /^[1-9]\d*$/.test(selectedMemberParam)
@@ -181,18 +276,33 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
     }
   };
 
+  const persistColumns = (next) => {
+    try {
+      localStorage.setItem('members-table-columns-v1', JSON.stringify(next));
+    } catch (error) {
+      console.warn('Nije moguće spremiti odabrane stupce tablice članova.', error);
+    }
+    return next;
+  };
+
   const toggleColumn = (column) => {
-    setVisibleColumns((current) => {
-      const next = current.includes(column)
+    setVisibleColumns((current) => persistColumns(
+      current.includes(column)
         ? current.filter((key) => key !== column)
-        : [...current, column];
-      try {
-        localStorage.setItem('members-table-columns-v1', JSON.stringify(next));
-      } catch (error) {
-        console.warn('Nije moguće spremiti odabrane stupce tablice članova.', error);
-      }
-      return next;
-    });
+        : [...current, column]
+    ));
+  };
+
+  const showAllColumns = () => {
+    setVisibleColumns(persistColumns(OPTIONAL_MEMBER_COLUMNS.map(({ key }) => key)));
+  };
+
+  const hideAllColumns = () => {
+    setVisibleColumns(persistColumns([]));
+  };
+
+  const resetColumns = () => {
+    setVisibleColumns(persistColumns([...DEFAULT_VISIBLE_COLUMNS]));
   };
 
   const handleExport = async () => {
@@ -242,6 +352,36 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
   useEffect(() => {
     load();
   }, []);
+
+  // Pamti filtere popisa članova pa se stanje vrati kad se korisnik vrati
+  // na stranicu nakon odlaska npr. na Zahtjeve.
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify({
+        search,
+        sectionFilter,
+        showAssociated,
+        showOnlyMySection,
+        sortBy,
+        sortDirection,
+        facultyFilter,
+        membershipFilter,
+        birthYearFilter,
+      }));
+    } catch (error) {
+      console.warn('Nije moguće spremiti filtere popisa članova.', error);
+    }
+  }, [
+    search,
+    sectionFilter,
+    showAssociated,
+    showOnlyMySection,
+    sortBy,
+    sortDirection,
+    facultyFilter,
+    membershipFilter,
+    birthYearFilter,
+  ]);
 
   useEffect(() => {
     if (selectedId === null) {
@@ -296,13 +436,16 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
       (sectionFilter === COUNCIL_FILTER
         ? m.isCouncilMember
         : m.homeSection?.id === sectionFilter
-          || (!showOnlyHomeMembers && m.associatedSectionIds?.includes(sectionFilter)));
+          || (showAssociated && m.associatedSectionIds?.includes(sectionFilter)));
     const matchesMySection = !showOnlyMySection || m.isManagedSectionMember;
+    // Boja iskaznice je strogi filtr: prikazuju se samo odabrane boje.
+    // Ako ništa nije odabrano, ne prikazuje se nijedan član.
+    const matchesMembership = membershipFilter.includes(m.membershipLevel);
     return matchesSearch
       && matchesSection
       && matchesMySection
+      && matchesMembership
       && (!facultyFilter || (m.facultyName || '').toLocaleLowerCase('hr').includes(facultyFilter.trim().toLocaleLowerCase('hr')))
-      && (!membershipFilter || m.membershipLevel === membershipFilter)
       && (!birthYearFilter || String(m.birthYear) === birthYearFilter);
   });
 
@@ -311,10 +454,22 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
       switch (sortBy) {
         case 'name': return `${member.firstName} ${member.lastName}`;
         case 'section': return member.homeSection?.name || '';
+        case 'associatedSections': return (member.associatedSectionNames || []).join(', ');
         case 'updated': return hasActiveCertificate(member.hasCertificateFile, member.certificateValidUntil) ? 'Da' : 'Ne';
         case 'faculty': return member.facultyName || '';
-        case 'membershipLevel': return MEMBERSHIP_LEVEL_OPTIONS.find((option) => option.value === member.membershipLevel)?.label || '';
+        case 'membershipLevel': return MEMBERSHIP_LABELS[member.membershipLevel] || '';
         case 'birthYear': return member.birthYear || '';
+        case 'gender': return GENDER_LABELS[member.gender] || '';
+        case 'dietType': return DIET_LABELS[member.dietType] || '';
+        case 'address': return formatAddress(member) || '';
+        case 'teams': return (member.teamNames || []).join(', ');
+        case 'drinks': return (member.drinkNames || []).join(', ');
+        case 'allergies': return (member.allergyNames || []).join(', ');
+        case 'appRole': return ROLE_LABELS[member.appRole] || '';
+        case 'transportVolunteer': return member.transportVolunteer ? 'Da' : 'Ne';
+        case 'acceptedDocuments': return member.acceptedDocuments ? 'Da' : 'Ne';
+        case 'ksetEmailVerified': return member.ksetEmailVerified ? 'Da' : 'Ne';
+        case 'privateEmailVerified': return member.privateEmailVerified ? 'Da' : 'Ne';
         default: return member[sortBy] || '';
       }
     };
@@ -333,13 +488,35 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
   const tableColumns = MEMBER_COLUMNS.filter(
     ({ key }) => key === 'name' || columnsToShow.includes(key)
   );
+  const activeSectionId = typeof sectionFilter === 'number' ? sectionFilter : null;
+
+  // "Prikaz pridruženih" ima smisla samo za konkretnu sekciju (ne "Svi" ni
+  // "Savjet") - tada je pridruženost definirana. Inače se opcija ne nudi.
+  const canShowAssociatedOption = activeSectionId !== null && canViewMembers;
+  const membershipFilterOptions = [
+    ...MEMBERSHIP_LEVEL_OPTIONS.map(({ value, label }) => ({ id: value, name: label })),
+    ...(canShowAssociatedOption ? [{ id: ASSOCIATED_OPTION, name: 'Prikaz pridruženih' }] : []),
+  ];
+  const membershipFilterValue = [
+    ...membershipFilter,
+    ...(showAssociated && canShowAssociatedOption ? [ASSOCIATED_OPTION] : []),
+  ];
+  const handleMembershipFilterChange = (_, next) => {
+    setMembershipFilter(next.filter((id) => id !== ASSOCIATED_OPTION));
+    if (canShowAssociatedOption) setShowAssociated(next.includes(ASSOCIATED_OPTION));
+  };
+
   const renderColumnValue = (member, column) => {
     switch (column.key) {
       case 'name': return `${member.firstName} ${member.lastName}`;
+      case 'firstName': return member.firstName || '-';
+      case 'lastName': return member.lastName || '-';
+      case 'oib': return member.oib || '-';
       case 'cardNumber': return member.cardNumber || '-';
       case 'ksetEmail':
       case 'privateEmail':
       case 'phone':
+      case 'discordId':
         return (
           <CopyableValue
             value={member[column.key]}
@@ -350,6 +527,7 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
           />
         );
       case 'section': return member.homeSection?.name || '-';
+      case 'associatedSections': return formatList(member.associatedSectionNames);
       case 'updated': return (
         <AcademicYearUpdateStatus
           hasCertificateFile={member.hasCertificateFile}
@@ -359,6 +537,26 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
       case 'faculty': return member.facultyName || '-';
       case 'membershipLevel': return <MembershipLabel value={member.membershipLevel} />;
       case 'birthYear': return member.birthYear || '-';
+      case 'dateOfBirth': return formatDate(member.dateOfBirth);
+      case 'address': return formatAddress(member);
+      case 'gender': return GENDER_LABELS[member.gender] || '-';
+      case 'dietType': return DIET_LABELS[member.dietType] || '-';
+      case 'shirtSize': return member.shirtSize || '-';
+      case 'teams': return formatList(member.teamNames);
+      case 'drinks': return formatList(member.drinkNames);
+      case 'allergies': return formatList(member.allergyNames);
+      case 'memberSince': return formatDate(member.memberSince);
+      case 'fullMemberSince': return formatDate(member.fullMemberSince);
+      case 'certificateValidUntil': return formatDate(member.certificateValidUntil);
+      case 'certificateApprovedAt': return formatDate(member.certificateApprovedAt);
+      case 'transportVolunteer': return formatBool(member.transportVolunteer);
+      case 'acceptedDocuments': return formatBool(member.acceptedDocuments);
+      case 'referralSource': return member.referralSource || '-';
+      case 'ksetEmailVerified': return formatBool(member.ksetEmailVerified);
+      case 'privateEmailVerified': return formatBool(member.privateEmailVerified);
+      case 'appRole': return ROLE_LABELS[member.appRole] || '-';
+      case 'createdAt': return formatDate(member.createdAt);
+      case 'updatedAt': return formatDate(member.updatedAt);
       default: return '-';
     }
   };
@@ -463,17 +661,6 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
         </button>
       </div>
 
-      {sectionFilter !== null && sectionFilter !== COUNCIL_FILTER
-        && canViewMembers && (
-        <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-content-secondary">
-          <input
-            type="checkbox"
-            checked={showOnlyHomeMembers}
-            onChange={(event) => setShowOnlyHomeMembers(event.target.checked)}
-          />
-          Vidi samo matične
-        </label>
-      )}
       {!isAdmin && canManageMembership && (
         <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-content-secondary">
           <input
@@ -508,13 +695,16 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
             {availableFaculties.map((faculty) => <option key={faculty} value={faculty} />)}
           </datalist>
         </label>
-        <label className="text-xs text-content-secondary">
-          Boja iskaznice
-          <select className="input mt-1 block min-w-40" value={membershipFilter} onChange={(event) => setMembershipFilter(event.target.value)}>
-            <option value="">Sve boje</option>
-            {MEMBERSHIP_LEVEL_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </label>
+        <div className="min-w-48 [&_.label]:text-xs [&_.label]:text-content-secondary [&>div]:!mb-0">
+          <MultiCheckDropdown
+            name="membershipFilter"
+            label="Boja iskaznice"
+            options={membershipFilterOptions}
+            value={membershipFilterValue}
+            onChange={handleMembershipFilterChange}
+            placeholder="Sve boje"
+          />
+        </div>
         <label className="text-xs text-content-secondary">
           Godina rođenja
           <select className="input mt-1 block min-w-40" value={birthYearFilter} onChange={(event) => setBirthYearFilter(event.target.value)}>
@@ -522,24 +712,39 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
             {availableBirthYears.map((year) => <option key={year} value={year}>{year}</option>)}
           </select>
         </label>
-        {(facultyFilter || membershipFilter || birthYearFilter) && (
+        <div className="flex items-center gap-3 self-center">
+          <span className="text-xs text-content-secondary">
+            Prikazano članova: <strong className="font-semibold text-content-primary">{sortedMembers.length}</strong>
+          </span>
           <button
             type="button"
             className="btn-ghost text-xs"
             onClick={() => {
               setFacultyFilter('');
-              setMembershipFilter('');
               setBirthYearFilter('');
+              setMembershipFilter([...DEFAULT_FILTERS.membershipFilter]);
+              setShowAssociated(false);
             }}
           >
             Očisti filtre
           </button>
-        )}
+        </div>
       </div>
 
       {canManageMembership && (
         <details className="mb-4 rounded-lg border border-surface-border p-3">
           <summary className="cursor-pointer text-sm font-medium">Odaberi stupce</summary>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className="btn-ghost text-xs" onClick={showAllColumns}>
+              Prikaži sve
+            </button>
+            <button type="button" className="btn-ghost text-xs" onClick={hideAllColumns}>
+              Sakrij sve
+            </button>
+            <button type="button" className="btn-ghost text-xs" onClick={resetColumns}>
+              Vrati zadano
+            </button>
+          </div>
           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
             {OPTIONAL_MEMBER_COLUMNS.map(({ key, label }) => (
               <label key={key} className="flex items-center gap-2 text-sm text-content-secondary">
@@ -556,8 +761,8 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
       )}
 
       {/* Desktop */}
-      <Card className="!p-0 overflow-hidden hidden md:block">
-        <table className="table-base w-full table-fixed text-xs">
+      <Card className="!p-0 overflow-x-auto hidden md:block">
+        <table className={`table-base text-xs ${tableColumns.length > 7 ? 'w-max min-w-full table-auto' : 'w-full table-fixed'}`}>
           <thead>
             <tr>
               {tableColumns.map((column) => (
@@ -575,16 +780,23 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
             {sortedMembers.length === 0 && (
               <tr><td colSpan={tableColumns.length + 1} className="!px-1.5 text-content-muted">Nema članova.</td></tr>
             )}
-            {sortedMembers.map((m) => (
-              <tr key={m.id} className="hover:bg-surface-overlay cursor-pointer" onClick={() => openMemberUnlessTextSelected(m.id)}>
-                {tableColumns.map((column) => (
-                  <td key={column.key} className="!px-1.5 break-words [overflow-wrap:anywhere]">
-                    {renderColumnValue(m, column)}
-                  </td>
-                ))}
-                <td className="!px-1.5 break-words text-brand-orange">Detalji →</td>
-              </tr>
-            ))}
+            {sortedMembers.map((m) => {
+              const stripe = memberStripeColor(m, activeSectionId);
+              return (
+                <tr key={m.id} className="hover:bg-surface-overlay cursor-pointer" onClick={() => openMemberUnlessTextSelected(m.id)}>
+                  {tableColumns.map((column, index) => (
+                    <td
+                      key={column.key}
+                      className="!px-1.5 break-words [overflow-wrap:anywhere]"
+                      style={index === 0 && stripe ? { borderLeft: `4px solid ${stripe}` } : undefined}
+                    >
+                      {renderColumnValue(m, column)}
+                    </td>
+                  ))}
+                  <td className="!px-1.5 break-words text-brand-orange">Detalji →</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Card>
@@ -594,8 +806,14 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
         {sortedMembers.length === 0 && (
           <Card><p className="text-content-muted">Nema članova.</p></Card>
         )}
-        {sortedMembers.map((m) => (
-          <Card key={m.id} className="!mb-0 cursor-pointer hover:bg-surface-overlay" >
+        {sortedMembers.map((m) => {
+          const stripe = memberStripeColor(m, activeSectionId);
+          return (
+          <Card
+            key={m.id}
+            className="!mb-0 cursor-pointer hover:bg-surface-overlay"
+            style={stripe ? { borderLeft: `4px solid ${stripe}` } : undefined}
+          >
             <div onClick={() => openMemberUnlessTextSelected(m.id)}>
               <div className="font-medium mb-1">{m.firstName} {m.lastName}</div>
               {tableColumns.filter(({ key }) => key !== 'name').map((column) => (
@@ -607,7 +825,8 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
               <div className="text-brand-orange text-sm mt-2">Detalji →</div>
             </div>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
     </PageContainer>

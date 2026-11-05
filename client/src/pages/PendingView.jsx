@@ -1,5 +1,6 @@
 import { FIELD_LABELS, fieldOrderIndex } from '../constants';
 import { formatDate } from '../date';
+import { useLookupData } from '../useLookupData';
 import MembershipLabel from '../components/MembershipLabel';
 import { PageContainer, Card, Alert } from '../components/ui';
 import PendingRefillForm from './PendingRefillForm';
@@ -27,7 +28,35 @@ function StatusBadge({ status }) {
   return <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${s.cls}`}>{s.label}</span>;
 }
 
+// Spoji facultyId i facultyOther u jedan redak "Fakultet" koji prikazuje ono
+// što je član poslao: naziv odabranog fakulteta (po bazi) ili vlastiti unos.
+// Status spojenog retka: REJECTED ako je bilo koje odbijeno, pa PENDING ako
+// bilo koje čeka, inače APPROVED.
+function buildRows(data, status, facultyMap) {
+  const hasFaculty = 'facultyId' in data || 'facultyOther' in data;
+  const rows = Object.entries(data)
+    .filter(([key]) => key !== 'facultyId' && key !== 'facultyOther')
+    .map(([key, value]) => ({ key, value, status: status[key] || 'PENDING' }));
+
+  if (hasFaculty) {
+    const facultyStatuses = [status.facultyId, status.facultyOther].filter(Boolean);
+    const mergedStatus = facultyStatuses.includes('REJECTED')
+      ? 'REJECTED'
+      : facultyStatuses.includes('PENDING')
+        ? 'PENDING'
+        : facultyStatuses[0] || 'PENDING';
+    rows.push({
+      key: 'faculty',
+      value: data.facultyId != null ? (facultyMap[data.facultyId] || data.facultyId) : data.facultyOther,
+      status: mergedStatus,
+    });
+  }
+
+  return rows.sort((a, b) => fieldOrderIndex(a.key) - fieldOrderIndex(b.key));
+}
+
 export default function PendingView({ pending, onUpdated }) {
+  const lookups = useLookupData();
   const data = pending.fieldData;
   const status = pending.fieldStatus;
 
@@ -38,6 +67,9 @@ export default function PendingView({ pending, onUpdated }) {
   if (fieldsToRefill.length > 0) {
     return <PendingRefillForm pending={pending} fieldsToRefill={fieldsToRefill} onUpdated={onUpdated} />;
   }
+
+  const facultyMap = Object.fromEntries(lookups.faculties.map((f) => [f.id, f.name]));
+  const rows = buildRows(data, status, facultyMap);
 
   return (
     <PageContainer title="Prijava na čekanju">
@@ -57,13 +89,11 @@ export default function PendingView({ pending, onUpdated }) {
               </tr>
             </thead>
             <tbody>
-              {Object.entries(data)
-                .sort(([a], [b]) => fieldOrderIndex(a) - fieldOrderIndex(b))
-                .map(([key, value]) => (
+              {rows.map(({ key, value, status: rowStatus }) => (
                 <tr key={key}>
                   <td className="text-content-secondary">{FIELD_LABELS[key] || key}</td>
                   <td>{key === 'membershipLevel' ? <MembershipLabel value={value} /> : displayValue(key, value)}</td>
-                  <td><StatusBadge status={status[key] || 'PENDING'} /></td>
+                  <td><StatusBadge status={rowStatus} /></td>
                 </tr>
               ))}
             </tbody>
