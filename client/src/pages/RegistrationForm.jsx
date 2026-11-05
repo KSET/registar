@@ -267,16 +267,14 @@ export default function RegistrationForm({ email, onSubmitted }) {
             <CheckboxField name="acceptedDocuments"
               label={
                 <>
-                  Prihvaćam{' '}
+                  {'Prihvaćam '}
                   <a
                     href="https://www.ssfer.hr/dokumenti.html"
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
                     className="text-brand-orange underline"
-                  >
-                    akte i dokumente udruge
-                  </a>
+                  >akte i dokumente udruge</a>
                 </>
               }
               value={values.acceptedDocuments} onChange={handleChange} onBlur={handleBlur} error={showError('acceptedDocuments')} />

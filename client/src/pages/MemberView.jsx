@@ -315,7 +315,7 @@ export default function MemberView({ member: initialMember, isAdmin, onUpdated }
               </Alert>
             ) : certValid ? (
               <p className="text-sm text-content-secondary">
-                Vaša potvrda je valjana do {formatDate(member.certificateValidUntil)}. Nova se može učitati nakon isteka.
+                Vaša potvrda je valjana do {formatDate(member.certificateValidUntil)} Nova se može učitati nakon isteka.
               </p>
             ) : (
               <div className="flex flex-col gap-3">
