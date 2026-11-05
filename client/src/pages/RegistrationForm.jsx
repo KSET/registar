@@ -56,7 +56,6 @@ export default function RegistrationForm({ email, onSubmitted }) {
 
   const handleHomeSectionChange = (name, value) => {
     handleChange(name, value);
-    handleChange('sectionIds', values.sectionIds.filter((id) => String(id) !== String(value)));
   };
 
   const facultyOptions = [
@@ -242,18 +241,8 @@ export default function RegistrationForm({ email, onSubmitted }) {
             options={lookups.sections.map((s) => ({ value: s.id, label: s.name }))}
             value={values.homeSectionId} onChange={handleHomeSectionChange} onBlur={handleBlur} error={showError('homeSectionId')} />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-            <MultiCheckDropdown name="sectionIds" label="Pridružene sekcije"
-              options={lookups.sections.filter((section) =>
-                String(section.id) !== String(values.homeSectionId) && section.name === 'Media'
-              )}
-              value={values.sectionIds} onChange={handleChange} onBlur={handleBlur} error={showError('sectionIds')} />
-            <MultiCheckDropdown name="teamIds" label="Timovi"
-              options={lookups.teams} value={values.teamIds} onChange={handleChange} onBlur={handleBlur} error={showError('teamIds')} />
-          </div>
-          <p className="mb-4 -mt-2 text-xs text-content-muted">
-            Plavi članovi mogu odabrati Mediju kao pridruženu sekciju.
-          </p>
+          <MultiCheckDropdown name="teamIds" label="Timovi"
+            options={lookups.teams} value={values.teamIds} onChange={handleChange} onBlur={handleBlur} error={showError('teamIds')} />
         </Card>
 
         <Card title="Ostalo">
