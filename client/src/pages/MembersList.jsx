@@ -101,7 +101,6 @@ const DEFAULT_FILTERS = {
   facultyFilter: '',
   // Po defaultu prikazujemo plave i narančaste; crvene i stare ne.
   membershipFilter: ['PRIDRUZENO', 'PUNOPRAVNO'],
-  birthYearFilter: '',
 };
 
 const MEMBERSHIP_LEVEL_VALUES = MEMBERSHIP_LEVEL_OPTIONS.map(({ value }) => value);
@@ -249,7 +248,6 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
   const [sortDirection, setSortDirection] = useState(savedFilters.sortDirection);
   const [facultyFilter, setFacultyFilter] = useState(savedFilters.facultyFilter);
   const [membershipFilter, setMembershipFilter] = useState(savedFilters.membershipFilter);
-  const [birthYearFilter, setBirthYearFilter] = useState(savedFilters.birthYearFilter);
   const [visibleColumns, setVisibleColumns] = useState(readSavedColumns);
   const selectedMemberParam = searchParams.get('member');
   const selectedId = selectedMemberParam && /^[1-9]\d*$/.test(selectedMemberParam)
@@ -376,7 +374,6 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
         sortDirection,
         facultyFilter,
         membershipFilter,
-        birthYearFilter,
       }));
     } catch (error) {
       console.warn('Nije moguće spremiti filtere popisa članova.', error);
@@ -390,7 +387,6 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
     sortDirection,
     facultyFilter,
     membershipFilter,
-    birthYearFilter,
   ]);
 
   useEffect(() => {
@@ -455,8 +451,7 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
       && matchesSection
       && matchesMySection
       && matchesMembership
-      && (!facultyFilter || (m.facultyName || '').toLocaleLowerCase('hr').includes(facultyFilter.trim().toLocaleLowerCase('hr')))
-      && (!birthYearFilter || String(m.birthYear) === birthYearFilter);
+      && (!facultyFilter || (m.facultyName || '').toLocaleLowerCase('hr').includes(facultyFilter.trim().toLocaleLowerCase('hr')));
   });
 
   const sortedMembers = [...filtered].sort((a, b) => {
@@ -513,8 +508,6 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
   });
   const availableFaculties = [...new Set(members.map((member) => member.facultyName).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'hr', { sensitivity: 'base' }));
-  const availableBirthYears = [...new Set(members.map((member) => member.birthYear).filter(Boolean))]
-    .sort((a, b) => b - a);
   //const columnsToShow = isAdmin ? DEFAULT_VISIBLE_COLUMNS : visibleColumns;
   const columnsToShow = visibleColumns;
   const tableColumns = MEMBER_COLUMNS.filter(
@@ -737,13 +730,7 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
             placeholder="Sve boje"
           />
         </div>
-        <label className="text-xs text-content-secondary">
-          Godina rođenja
-          <select className="input mt-1 block min-w-40" value={birthYearFilter} onChange={(event) => setBirthYearFilter(event.target.value)}>
-            <option value="">Sve godine</option>
-            {availableBirthYears.map((year) => <option key={year} value={year}>{year}</option>)}
-          </select>
-        </label>
+
         <div className="flex items-center gap-3 self-center">
           <span className="text-xs text-content-secondary">
             Prikazano članova: <strong className="font-semibold text-content-primary">{sortedMembers.length}</strong>
@@ -753,7 +740,6 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
             className="btn-ghost text-xs"
             onClick={() => {
               setFacultyFilter('');
-              setBirthYearFilter('');
               setMembershipFilter([...DEFAULT_FILTERS.membershipFilter]);
               setShowAssociated(false);
             }}
