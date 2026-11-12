@@ -20,7 +20,7 @@ const ROLE_LABELS = {
   SANKER: 'Šef šanka',
   VODITELJ_PROGRAMA: 'Voditelj programa',
   NADZORNI: 'Nadzorni',
-  ADMINISTRATOR: 'Administrator',
+  UPRAVA: 'Uprava',
 };
 const COUNCIL_FILTER = 'savjet';
 const FACULTY_OTHER = 'OTHER';
@@ -31,6 +31,7 @@ const DEFAULT_VISIBLE_COLUMNS = [
   'phone',
   'section',
   'updated',
+  'isAdministrator',
 ];
 // Every member field exposed by GET /api/members is toggleable as a column.
 // `name` is always shown and is therefore kept out of the toggle list below.
@@ -68,6 +69,7 @@ const MEMBER_COLUMNS = [
   { key: 'privateEmailVerified', label: 'Privatni e-mail potvrđen', sortKey: 'privateEmailVerified' },
   { key: 'discordId', label: 'Discord ID', sortKey: 'discordId' },
   { key: 'appRole', label: 'Uloga', sortKey: 'appRole' },
+  { key: 'isAdministrator', label: 'Administrator', sortKey: 'isAdministrator' },
   { key: 'createdAt', label: 'Kreiran', sortKey: 'createdAt' },
   { key: 'updatedAt', label: 'Zadnja izmjena', sortKey: 'updatedAt' },
 ];
@@ -471,6 +473,7 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
         case 'drinks': return (member.drinkNames || []).join(', ');
         case 'allergies': return (member.allergyNames || []).join(', ');
         case 'appRole': return ROLE_LABELS[member.appRole] || '';
+        case 'isAdministrator': return member.isAdministrator ? 'Da' : 'Ne';
         case 'transportVolunteer': return member.transportVolunteer ? 'Da' : 'Ne';
         case 'acceptedDocuments': return member.acceptedDocuments ? 'Da' : 'Ne';
         case 'ksetEmailVerified': return member.ksetEmailVerified ? 'Da' : 'Ne';
@@ -580,6 +583,7 @@ export default function MembersList({ isAdmin, canViewMembers, canManageMembersh
       case 'ksetEmailVerified': return formatBool(member.ksetEmailVerified);
       case 'privateEmailVerified': return formatBool(member.privateEmailVerified);
       case 'appRole': return ROLE_LABELS[member.appRole] || '-';
+      case 'isAdministrator': return member.isAdministrator ? '✓' : '-';
       case 'createdAt': return formatDate(member.createdAt);
       case 'updatedAt': return formatDate(member.updatedAt);
       default: return '-';
@@ -931,6 +935,7 @@ function MembershipManager({ member, lookups, onSaved }) {
 
 function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificates, lookups, onBack, onRoleChanged, onUpdated, onDeleted, setMessage }) {
   const [role, setRole] = useState(member.appRole || 'CLAN');
+  const [isAdministrator, setIsAdministrator] = useState(member.isAdministrator ?? false);
   const [managedSectionId, setManagedSectionId] = useState(member.managedSectionId ? String(member.managedSectionId) : '');
   const [error, setError] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -963,6 +968,7 @@ function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificate
         headers: jsonHeaders(),
         body: JSON.stringify({
           appRole: role,
+          isAdministrator,
           managedSectionId: role === 'VODITELJ_SEKCIJE' ? managedSectionId : null,
         }),
       });
@@ -1079,6 +1085,7 @@ function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificate
             <InfoRow label="Pridružene sekcije" value={member.sections?.map((s) => s.section.name).join(', ') || '-'} />
             <InfoRow label="Timovi" value={member.teams?.map((t) => t.team.name).join(', ') || '-'} />
             <InfoRow label="Uloga" value={ROLE_LABELS[member.appRole]} />
+            <InfoRow label="Administrator" value={member.isAdministrator ? '✓' : 'Ne'} />
             <InfoRow label="Potvrda o studiranju">
               {member.certificatePath && canViewCertificates ? (
                 <span className="block">
@@ -1157,12 +1164,22 @@ function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificate
               <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
                 <option value="CLAN">Član</option>
                 <option value="VODITELJ_SEKCIJE">Voditelj sekcije</option>
-                <option value="ADMINISTRATOR">Administrator</option>
+                <option value="UPRAVA">Uprava</option>
                 <option value="NADZORNI">Nadzorni</option>
                 <option value="SANKER">Šef šanka</option>
                 <option value="VODITELJ_PROGRAMA">Voditelj programa</option>
               </select>
             </div>
+
+            <label className="mb-4 flex items-center gap-2 text-sm text-content-secondary">
+              <input
+                type="checkbox"
+                checked={isAdministrator}
+                onChange={(event) => setIsAdministrator(event.target.checked)}
+                className="h-4 w-4 accent-brand-orange"
+              />
+              Administrator
+            </label>
 
             {role === 'VODITELJ_SEKCIJE' && (
               <div className="mb-4">
@@ -1188,7 +1205,7 @@ function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificate
       <ConfirmDialog
         open={confirmOpen}
         title="Promjena uloge"
-        message={`Postaviti ${member.firstName} ${member.lastName} kao ${ROLE_LABELS[role]}?`}
+        message={`Postaviti ${member.firstName} ${member.lastName} kao ${ROLE_LABELS[role]}${isAdministrator ? ' i administratora' : ''}?`}
         onConfirm={submitRole}
         onCancel={() => setConfirmOpen(false)}
       />

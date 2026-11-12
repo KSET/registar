@@ -14,7 +14,7 @@ const FACULTY_OTHER = 'OTHER';
 const APP_ROLE_LABELS = {
   CLAN: 'Član',
   VODITELJ_SEKCIJE: 'Voditelj sekcije',
-  ADMINISTRATOR: 'Administrator',
+  UPRAVA: 'Uprava',
   NADZORNI: 'Nadzorni',
   SANKER: 'Šef šanka',
   VODITELJ_PROGRAMA: 'Voditelj programa',

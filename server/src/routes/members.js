@@ -4,7 +4,12 @@ const { authenticateToken } = require('../middleware/auth');
 const { verifyCurrentRole } = require('../middleware/verifyRole');
 const { hasAdminRole } = require('../middleware/authorize');
 const { logAction, logError } = require('../utils/auditLog');
-const { parsePositiveIntParam, validateIdArray, checkFieldLength } = require('../utils/requestValidation');
+const {
+  parsePositiveIntParam,
+  isValidDateOnly,
+  validateIdArray,
+  checkFieldLength,
+} = require('../utils/requestValidation');
 const { isEmailTaken } = require('../utils/emailUnique');
 const { deleteCertificate } = require('./uploads');
 const { REFERRAL_SOURCE_OPTIONS } = require('../utils/referralSources');
@@ -15,6 +20,38 @@ const router = express.Router();
 const LOCKED_FIELDS = ['oib', 'dateOfBirth', 'cardNumber', 'memberSince', 'discordId'];
 const CERTIFICATE_FIELDS = ['certificatePath', 'certificateValidUntil'];
 const MAX_LEADERS_PER_SECTION = 2;
+
+async function parseFacultySelection(facultyIdValue, facultyOtherValue) {
+  const rawFacultyId = facultyIdValue == null ? '' : String(facultyIdValue).trim();
+  const facultyId = rawFacultyId ? parsePositiveIntParam(rawFacultyId) : null;
+  if (rawFacultyId && facultyId === null) {
+    return { error: 'Nevažeći fakultet.' };
+  }
+
+  const facultyOther = facultyOtherValue ? String(facultyOtherValue).trim() : null;
+  if (!facultyId && !facultyOther) {
+    return { error: 'Fakultet je obavezan.' };
+  }
+
+  if (facultyId) {
+    const faculty = await prisma.faculty.findUnique({
+      where: { id: facultyId },
+      select: { id: true },
+    });
+    if (!faculty) return { error: 'Odabrani fakultet ne postoji.' };
+  }
+
+  const lengthError = checkFieldLength('facultyOther', facultyOther);
+  if (lengthError) return { error: lengthError };
+  return { facultyId, facultyOther };
+}
+
+async function validateRelatedIds(model, ids, label) {
+  if (new Set(ids).size !== ids.length) return `${label} sadrže duplikate.`;
+  if (ids.length === 0) return null;
+  const found = await model.count({ where: { id: { in: ids } } });
+  return found === ids.length ? null : `${label} sadrže nepostojeće stavke.`;
+}
 
 const EDITABLE_SCALAR_FIELDS = [
   'firstName',
@@ -116,7 +153,14 @@ router.patch('/me', authenticateToken, async (req, res) => {
           continue;
         }
         if (field === 'fullMemberSince') {
-          data[field] = body[field] ? new Date(body[field]) : null;
+          if (!body[field]) {
+            data[field] = null;
+          } else {
+            if (!isValidDateOnly(body[field])) {
+              return res.status(400).json({ error: `Polje "${field}" nije ispravan datum.` });
+            }
+            data[field] = new Date(`${body[field]}T00:00:00.000Z`);
+          }
         } else {
           const val = body[field];
           if (typeof val === 'string' && !val.trim()) {
@@ -132,17 +176,10 @@ router.patch('/me', authenticateToken, async (req, res) => {
     }
 
     if ('facultyId' in body || 'facultyOther' in body) {
-      const fid = body.facultyId ? parseInt(body.facultyId) : null;
-      const fother = body.facultyOther ? String(body.facultyOther).trim() : null;
-      if (!fid && !fother) {
-        return res.status(400).json({ error: 'Fakultet je obavezan.' });
-      }
-      const facultyOtherLengthError = checkFieldLength('facultyOther', fother);
-      if (facultyOtherLengthError) {
-        return res.status(400).json({ error: facultyOtherLengthError });
-      }
-      data.facultyId = fid;
-      data.facultyOther = fother;
+      const faculty = await parseFacultySelection(body.facultyId, body.facultyOther);
+      if (faculty.error) return res.status(400).json({ error: faculty.error });
+      data.facultyId = faculty.facultyId;
+      data.facultyOther = faculty.facultyOther;
     }
 
     if ('gender' in data && !['M', 'Z', 'OSTALO'].includes(data.gender)) {
@@ -175,9 +212,8 @@ router.patch('/me', authenticateToken, async (req, res) => {
     if ('sectionIds' in body) {
       const result = validateIdArray(body.sectionIds, 'sectionIds');
       if (!result.ok) return res.status(400).json({ error: result.error });
-      if (new Set(result.ids).size !== result.ids.length) {
-        return res.status(400).json({ error: 'Pridružene sekcije sadrže duplikate.' });
-      }
+      const relatedIdsError = await validateRelatedIds(prisma.section, result.ids, 'Pridružene sekcije');
+      if (relatedIdsError) return res.status(400).json({ error: relatedIdsError });
       const currentMember = await prisma.member.findUnique({
         where: { id: memberId },
         select: {
@@ -212,6 +248,8 @@ router.patch('/me', authenticateToken, async (req, res) => {
     if ('teamIds' in body) {
       const result = validateIdArray(body.teamIds, 'teamIds');
       if (!result.ok) return res.status(400).json({ error: result.error });
+      const relatedIdsError = await validateRelatedIds(prisma.team, result.ids, 'Timovi');
+      if (relatedIdsError) return res.status(400).json({ error: relatedIdsError });
       relationUpdates.teams = {
         deleteMany: {},
         create: result.ids.map((id) => ({ teamId: id })),
@@ -220,6 +258,8 @@ router.patch('/me', authenticateToken, async (req, res) => {
     if ('drinkIds' in body) {
       const result = validateIdArray(body.drinkIds, 'drinkIds');
       if (!result.ok) return res.status(400).json({ error: result.error });
+      const relatedIdsError = await validateRelatedIds(prisma.drink, result.ids, 'Pića');
+      if (relatedIdsError) return res.status(400).json({ error: relatedIdsError });
       if (result.ids.length === 0) {
         return res.status(400).json({ error: 'Morate odabrati barem jedno piće.' });
       }
@@ -231,6 +271,8 @@ router.patch('/me', authenticateToken, async (req, res) => {
     if ('allergyIds' in body) {
       const result = validateIdArray(body.allergyIds, 'allergyIds');
       if (!result.ok) return res.status(400).json({ error: result.error });
+      const relatedIdsError = await validateRelatedIds(prisma.allergy, result.ids, 'Alergije');
+      if (relatedIdsError) return res.status(400).json({ error: relatedIdsError });
       relationUpdates.allergies = {
         deleteMany: {},
         create: result.ids.map((id) => ({ allergyId: id })),
@@ -273,7 +315,7 @@ router.patch('/me', authenticateToken, async (req, res) => {
 router.patch('/:id/management', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (!hasAdminRole(req.user) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -291,7 +333,7 @@ router.patch('/:id/management', authenticateToken, verifyCurrentRole, async (req
     });
     if (!target) return res.status(404).json({ error: 'Član nije pronađen.' });
 
-    if (appRole === 'VODITELJ_SEKCIJE') {
+    if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)) {
       const leader = await prisma.member.findUnique({ where: { id: memberId }, select: { managedSectionId: true } });
       const sectionId = leader?.managedSectionId;
       if (!sectionId || target.homeSectionId !== sectionId) {
@@ -420,6 +462,7 @@ const LIST_SELECT = {
   drinks: { select: { drink: { select: { name: true } } } },
   allergies: { select: { allergy: { select: { name: true } } } },
   appRole: true,
+  isAdministrator: true,
   createdAt: true,
   updatedAt: true,
 };
@@ -465,15 +508,16 @@ function toListItem(m, limited) {
     drinkNames: m.drinks.map((d) => d.drink?.name).filter(Boolean),
     allergyNames: m.allergies.map((a) => a.allergy?.name).filter(Boolean),
     appRole: m.appRole,
+    isAdministrator: m.isAdministrator,
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,
     isCouncilMember: [
       'VODITELJ_SEKCIJE',
-      'ADMINISTRATOR',
+      'UPRAVA',
       'NADZORNI',
       'SANKER',
       'VODITELJ_PROGRAMA',
-    ].includes(m.appRole),
+    ].includes(m.appRole) || m.isAdministrator,
     limited,
   };
 }
@@ -481,21 +525,21 @@ function toListItem(m, limited) {
 router.get('/export', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId, managedSectionId } = req.user;
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (!hasAdminRole(req.user) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
-    if (appRole === 'VODITELJ_SEKCIJE' && !managedSectionId) {
+    if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user) && !managedSectionId) {
       return res.status(403).json({ error: 'Niste voditelj nijedne sekcije.' });
     }
 
-    const section = appRole === 'VODITELJ_SEKCIJE'
+    const section = appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)
       ? await prisma.section.findUnique({
         where: { id: managedSectionId },
         select: { id: true, name: true },
       })
       : null;
-    if (appRole === 'VODITELJ_SEKCIJE' && !section) {
+    if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user) && !section) {
       return res.status(403).json({ error: 'Sekcija koju vodite nije pronađena.' });
     }
 
@@ -545,7 +589,7 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
     const { appRole, memberId } = req.user;
 
     if (
-      !hasAdminRole(appRole)
+      !hasAdminRole(req.user)
       && !['VODITELJ_SEKCIJE', 'SANKER', 'VODITELJ_PROGRAMA'].includes(appRole)
     ) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
@@ -556,7 +600,7 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     });
 
-    if (hasAdminRole(appRole)) {
+    if (hasAdminRole(req.user)) {
       return res.json(allMembers.map((m) => toListItem(m, false)));
     }
 
@@ -597,7 +641,7 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
 router.get('/stats', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole } = req.user;
-    if (!hasAdminRole(appRole)) {
+    if (!hasAdminRole(req.user)) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -685,7 +729,7 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
     const { appRole, memberId } = req.user;
 
     if (
-      !hasAdminRole(appRole)
+      !hasAdminRole(req.user)
       && !['VODITELJ_SEKCIJE', 'SANKER', 'VODITELJ_PROGRAMA'].includes(appRole)
     ) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
@@ -712,12 +756,12 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
       return res.status(404).json({ error: 'Član nije pronađen.' });
     }
 
-    if (['SANKER', 'VODITELJ_PROGRAMA'].includes(appRole)) {
-      return res.json({ ...target, limited: false, canManageMembership: false });
+    if (hasAdminRole(req.user)) {
+      return res.json({ ...target, limited: false, canManageMembership: true });
     }
 
-    if (hasAdminRole(appRole)) {
-      return res.json({ ...target, limited: false, canManageMembership: true });
+    if (['SANKER', 'VODITELJ_PROGRAMA'].includes(appRole)) {
+      return res.json({ ...target, limited: false, canManageMembership: false });
     }
 
     const leader = await prisma.member.findUnique({
@@ -746,7 +790,7 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
 router.delete('/:id/certificate', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId: actorId } = req.user;
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (!hasAdminRole(req.user) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -763,7 +807,7 @@ router.delete('/:id/certificate', authenticateToken, verifyCurrentRole, async (r
       return res.status(404).json({ error: 'Član nije pronađen.' });
     }
 
-    if (appRole === 'VODITELJ_SEKCIJE') {
+    if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)) {
       const leader = await prisma.member.findUnique({
         where: { id: actorId },
         select: { managedSectionId: true },
@@ -827,7 +871,7 @@ router.delete('/:id/certificate', authenticateToken, verifyCurrentRole, async (r
 router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole } = req.user;
-    if (!hasAdminRole(appRole)) {
+    if (!hasAdminRole(req.user)) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -859,9 +903,12 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
         continue;
       }
       if (field === 'fullMemberSince' || field === 'dateOfBirth' || field === 'memberSince') {
-        data[field] = body[field] ? new Date(body[field]) : field === 'fullMemberSince' ? null : undefined;
-        if (data[field] === undefined || (data[field] && Number.isNaN(data[field].getTime()))) {
+        if (field === 'fullMemberSince' && !body[field]) {
+          data[field] = null;
+        } else if (!isValidDateOnly(body[field])) {
           return res.status(400).json({ error: `Polje "${field}" nije ispravan datum.` });
+        } else {
+          data[field] = new Date(`${body[field]}T00:00:00.000Z`);
         }
       } else {
         const val = body[field];
@@ -909,20 +956,20 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
     }
 
     if ('facultyId' in body || 'facultyOther' in body) {
-      const fid = body.facultyId ? parseInt(body.facultyId) : null;
-      const fother = body.facultyOther ? String(body.facultyOther).trim() : null;
-      if (!fid && !fother) {
-        return res.status(400).json({ error: 'Fakultet je obavezan.' });
-      }
-      const facultyOtherLengthError = checkFieldLength('facultyOther', fother);
-      if (facultyOtherLengthError) return res.status(400).json({ error: facultyOtherLengthError });
-      data.facultyId = fid;
-      data.facultyOther = fother;
+      const faculty = await parseFacultySelection(body.facultyId, body.facultyOther);
+      if (faculty.error) return res.status(400).json({ error: faculty.error });
+      data.facultyId = faculty.facultyId;
+      data.facultyOther = faculty.facultyOther;
     }
 
     if ('homeSectionId' in body) {
       const hsid = parsePositiveIntParam(body.homeSectionId);
       if (hsid === null) return res.status(400).json({ error: 'Nevažeća matična sekcija.' });
+      const homeSection = await prisma.section.findUnique({
+        where: { id: hsid },
+        select: { id: true },
+      });
+      if (!homeSection) return res.status(400).json({ error: 'Matična sekcija ne postoji.' });
       data.homeSectionId = hsid;
     }
 
@@ -930,9 +977,8 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
     if ('sectionIds' in body) {
       const result = validateIdArray(body.sectionIds, 'sectionIds');
       if (!result.ok) return res.status(400).json({ error: result.error });
-      if (new Set(result.ids).size !== result.ids.length) {
-        return res.status(400).json({ error: 'Pridružene sekcije sadrže duplikate.' });
-      }
+      const relatedIdsError = await validateRelatedIds(prisma.section, result.ids, 'Pridružene sekcije');
+      if (relatedIdsError) return res.status(400).json({ error: relatedIdsError });
       const homeSectionId = data.homeSectionId ?? target.homeSectionId;
       if (result.ids.includes(homeSectionId)) {
         return res.status(400).json({ error: 'Matična sekcija ne može biti i pridružena sekcija.' });
@@ -942,16 +988,22 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
     if ('teamIds' in body) {
       const result = validateIdArray(body.teamIds, 'teamIds');
       if (!result.ok) return res.status(400).json({ error: result.error });
+      const relatedIdsError = await validateRelatedIds(prisma.team, result.ids, 'Timovi');
+      if (relatedIdsError) return res.status(400).json({ error: relatedIdsError });
       relationUpdates.teams = { deleteMany: {}, create: result.ids.map((id) => ({ teamId: id })) };
     }
     if ('drinkIds' in body) {
       const result = validateIdArray(body.drinkIds, 'drinkIds');
       if (!result.ok) return res.status(400).json({ error: result.error });
+      const relatedIdsError = await validateRelatedIds(prisma.drink, result.ids, 'Pića');
+      if (relatedIdsError) return res.status(400).json({ error: relatedIdsError });
       relationUpdates.drinks = { deleteMany: {}, create: result.ids.map((id) => ({ drinkId: id })) };
     }
     if ('allergyIds' in body) {
       const result = validateIdArray(body.allergyIds, 'allergyIds');
       if (!result.ok) return res.status(400).json({ error: result.error });
+      const relatedIdsError = await validateRelatedIds(prisma.allergy, result.ids, 'Alergije');
+      if (relatedIdsError) return res.status(400).json({ error: relatedIdsError });
       relationUpdates.allergies = { deleteMany: {}, create: result.ids.map((id) => ({ allergyId: id })) };
     }
 
@@ -987,7 +1039,7 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
 router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId: actorId } = req.user;
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (!hasAdminRole(req.user) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -1001,8 +1053,8 @@ router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => 
       return res.status(404).json({ error: 'Član nije pronađen.' });
     }
 
-    if (appRole === 'VODITELJ_SEKCIJE') {
-      if (targetId === actorId || hasAdminRole(target.appRole)) {
+    if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)) {
+      if (targetId === actorId || hasAdminRole(target)) {
         return res.status(403).json({ error: 'Nemate ovlasti izbrisati ovog člana.' });
       }
 
@@ -1017,9 +1069,14 @@ router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => 
       }
     }
 
-    if (hasAdminRole(target.appRole)) {
+    if (hasAdminRole(target)) {
       const adminCount = await prisma.member.count({
-        where: { appRole: { in: ['ADMINISTRATOR', 'NADZORNI'] } },
+        where: {
+          OR: [
+            { appRole: { in: ['UPRAVA', 'NADZORNI'] } },
+            { isAdministrator: true },
+          ],
+        },
       });
       if (adminCount <= 1) {
         return res.status(400).json({ error: 'Mora postojati barem jedan administrator ili nadzorni.' });
@@ -1048,7 +1105,7 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
   try {
     const { appRole: actorRole, memberId: actorId } = req.user;
 
-    if (!hasAdminRole(actorRole)) {
+    if (!hasAdminRole(req.user)) {
       return res.status(403).json({ error: 'Samo administrator može mijenjati uloge.' });
     }
 
@@ -1056,10 +1113,13 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
     if (targetId === null) {
       return res.status(400).json({ error: 'Nevažeći ID člana.' });
     }
-    const { appRole, managedSectionId } = req.body;
+    const { appRole, managedSectionId, isAdministrator } = req.body;
 
-    if (!['CLAN', 'VODITELJ_SEKCIJE', 'ADMINISTRATOR', 'NADZORNI', 'SANKER', 'VODITELJ_PROGRAMA'].includes(appRole)) {
+    if (!['CLAN', 'VODITELJ_SEKCIJE', 'UPRAVA', 'NADZORNI', 'SANKER', 'VODITELJ_PROGRAMA'].includes(appRole)) {
       return res.status(400).json({ error: 'Nevažeća uloga.' });
+    }
+    if (isAdministrator !== undefined && typeof isAdministrator !== 'boolean') {
+      return res.status(400).json({ error: 'Nevažeća administratorska oznaka.' });
     }
 
     const target = await prisma.member.findUnique({ where: { id: targetId } });
@@ -1067,9 +1127,15 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
       return res.status(404).json({ error: 'Član nije pronađen.' });
     }
 
-    if (hasAdminRole(target.appRole) && !hasAdminRole(appRole)) {
+    const nextIsAdministrator = isAdministrator ?? target.isAdministrator;
+    if (hasAdminRole(target) && !hasAdminRole(appRole, nextIsAdministrator)) {
       const adminCount = await prisma.member.count({
-        where: { appRole: { in: ['ADMINISTRATOR', 'NADZORNI'] } },
+        where: {
+          OR: [
+            { appRole: { in: ['UPRAVA', 'NADZORNI'] } },
+            { isAdministrator: true },
+          ],
+        },
       });
       if (adminCount <= 1) {
         return res.status(400).json({ error: 'Mora postojati barem jedan administrator ili nadzorni.' });
@@ -1103,6 +1169,7 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
       where: { id: targetId },
       data: {
         appRole,
+        isAdministrator: nextIsAdministrator,
         managedSectionId: newManagedSectionId,
       },
     });
@@ -1112,6 +1179,7 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
       details: {
         targetId,
         newRole: appRole,
+        isAdministrator: nextIsAdministrator,
         managedSectionId: newManagedSectionId,
       },
     });
@@ -1119,6 +1187,7 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
     res.json({
       id: updated.id,
       appRole: updated.appRole,
+      isAdministrator: updated.isAdministrator,
       managedSectionId: updated.managedSectionId,
     });
   } catch (err) {

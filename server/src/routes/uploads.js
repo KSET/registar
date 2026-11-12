@@ -56,16 +56,33 @@ async function saveCertificateBuffer(firstName, lastName, buffer) {
 function deleteCertificate(filename) {
   if (!filename) return;
   const filePath = path.join(UPLOAD_DIR, path.basename(filename));
-  fs.unlink(filePath, () => {});
+  fs.unlink(filePath, (err) => {
+    if (err && err.code !== 'ENOENT') {
+      console.error('Delete certificate error:', err);
+    }
+  });
 }
 
 function certificateFilePath(filename) {
   return path.join(UPLOAD_DIR, path.basename(filename));
 }
 
+function sendCertificate(res, filename) {
+  const stream = fs.createReadStream(certificateFilePath(filename));
+  stream.on('error', (err) => {
+    console.error('Read certificate error:', err);
+    if (res.headersSent) {
+      res.destroy();
+    } else {
+      res.status(500).json({ error: 'Greška pri čitanju potvrde.' });
+    }
+  });
+  stream.pipe(res);
+}
+
 // Can viewer see targetMember's certificate?
 async function canView(viewer, targetMemberId) {
-  if (hasAdminRole(viewer.appRole)) return true;
+  if (hasAdminRole(viewer)) return true;
   if (viewer.memberId === targetMemberId) return true;
   if (viewer.appRole === 'VODITELJ_SEKCIJE') return true;
   return false;
@@ -192,12 +209,13 @@ router.get('/certificate/:memberId', authenticateToken, verifyCurrentRole, async
     }
 
     if (!filename) return res.status(404).json({ error: 'Potvrda ne postoji.' });
-    const fp = certificateFilePath(filename);
-    if (!fs.existsSync(fp)) return res.status(404).json({ error: 'Datoteka nije pronađena.' });
+    if (!fs.existsSync(certificateFilePath(filename))) {
+      return res.status(404).json({ error: 'Datoteka nije pronađena.' });
+    }
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="potvrda.pdf"');
-    fs.createReadStream(fp).pipe(res);
+    sendCertificate(res, filename);
   } catch (err) {
     console.error('Serve certificate error:', err);
     res.status(500).json({ error: 'Greška na serveru.' });
@@ -209,7 +227,7 @@ router.get('/certificate/:memberId', authenticateToken, verifyCurrentRole, async
 router.get('/pending-certificate/:pendingId', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (!hasAdminRole(req.user) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -221,7 +239,7 @@ router.get('/pending-certificate/:pendingId', authenticateToken, verifyCurrentRo
     if (!pending) return res.status(404).json({ error: 'Prijava nije pronađena.' });
 
     // Section leader may only view applications for their section
-    if (appRole === 'VODITELJ_SEKCIJE') {
+    if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)) {
       const leader = await prisma.member.findUnique({
         where: { id: memberId },
         select: { managedSectionId: true },
@@ -233,12 +251,13 @@ router.get('/pending-certificate/:pendingId', authenticateToken, verifyCurrentRo
 
     const filename = pending.fieldData?.certificatePath;
     if (!filename) return res.status(404).json({ error: 'Potvrda ne postoji.' });
-    const fp = certificateFilePath(filename);
-    if (!fs.existsSync(fp)) return res.status(404).json({ error: 'Datoteka nije pronađena.' });
+    if (!fs.existsSync(certificateFilePath(filename))) {
+      return res.status(404).json({ error: 'Datoteka nije pronađena.' });
+    }
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="potvrda.pdf"');
-    fs.createReadStream(fp).pipe(res);
+    sendCertificate(res, filename);
   } catch (err) {
     console.error('Serve pending certificate error:', err);
     res.status(500).json({ error: 'Greška na serveru.' });

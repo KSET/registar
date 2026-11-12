@@ -33,7 +33,7 @@ enum AppRole {
   SANKER
   VODITELJ_PROGRAMA
   NADZORNI
-  ADMINISTRATOR
+  UPRAVA
 }
 
 enum PendingStatus {
@@ -119,6 +119,7 @@ model Member {
   certificateApprovedAt DateTime?
   referralSource        String?
   appRole            AppRole         @default(CLAN)
+  isAdministrator    Boolean         @default(false)
   discordId          String?         @unique @db.VarChar(20)
 
   homeSectionId      Int

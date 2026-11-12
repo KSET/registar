@@ -270,10 +270,12 @@ router.get(
       if (member) {
         tokenPayload.memberId = member.id;
         tokenPayload.appRole = member.appRole;
+        tokenPayload.isAdministrator = member.isAdministrator;
         tokenPayload.isNewUser = false;
       } else {
         tokenPayload.memberId = null;
         tokenPayload.appRole = null;
+        tokenPayload.isAdministrator = false;
         tokenPayload.isNewUser = true;
       }
 
@@ -420,10 +422,12 @@ router.post('/refresh', authenticateToken, async (req, res) => {
     if (member) {
       tokenPayload.memberId = member.id;
       tokenPayload.appRole = member.appRole;
+      tokenPayload.isAdministrator = member.isAdministrator;
       tokenPayload.isNewUser = false;
     } else {
       tokenPayload.memberId = null;
       tokenPayload.appRole = null;
+      tokenPayload.isAdministrator = false;
       tokenPayload.isNewUser = true;
     }
 

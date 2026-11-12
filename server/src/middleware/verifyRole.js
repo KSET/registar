@@ -1,16 +1,14 @@
 const prisma = require('../lib/prisma');
 
-// Re-checks the acting member's role/managedSection against the database
-// instead of trusting the JWT's appRole/managedSectionId claims, which stay
-// valid for the token's full 24h lifetime even after an admin changes the
-// holder's role. Use after authenticateToken on any route that branches on
-// req.user.appRole or req.user.managedSectionId - it overwrites both with
-// current values so existing handlers need no other changes.
+// Refreshes role, administrator flag, and managed section from the database
+// instead of trusting JWT claims, which remain valid after those values change.
+// Use after authenticateToken on routes that rely on these authorization fields.
 async function verifyCurrentRole(req, res, next) {
   const { memberId } = req.user;
 
   if (!memberId) {
     req.user.appRole = null;
+    req.user.isAdministrator = false;
     req.user.managedSectionId = null;
     return next();
   }
@@ -18,10 +16,11 @@ async function verifyCurrentRole(req, res, next) {
   try {
     const current = await prisma.member.findUnique({
       where: { id: memberId },
-      select: { appRole: true, managedSectionId: true },
+      select: { appRole: true, isAdministrator: true, managedSectionId: true },
     });
 
     req.user.appRole = current?.appRole ?? null;
+    req.user.isAdministrator = current?.isAdministrator ?? false;
     req.user.managedSectionId = current?.managedSectionId ?? null;
     next();
   } catch (err) {

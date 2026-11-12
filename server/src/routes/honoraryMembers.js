@@ -12,7 +12,7 @@ const router = express.Router();
 router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole } = req.user;
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (!hasAdminRole(req.user) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -29,7 +29,7 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
 // Admin-only: add an honorary member - just a name, nothing else is tracked.
 router.post('/', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
-    if (!hasAdminRole(req.user.appRole)) {
+    if (!hasAdminRole(req.user)) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -61,7 +61,7 @@ router.post('/', authenticateToken, verifyCurrentRole, async (req, res) => {
 // Admin-only: remove an honorary member.
 router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
-    if (!hasAdminRole(req.user.appRole)) {
+    if (!hasAdminRole(req.user)) {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 

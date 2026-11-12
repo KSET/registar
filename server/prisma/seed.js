@@ -103,7 +103,7 @@ async function main() {
     await prisma.member.update({
       where: { id: existingAdmin.id },
       data: {
-        appRole: 'ADMINISTRATOR',
+        appRole: 'UPRAVA',
         managedSectionId: null,
         ...(matchedKset ? { ksetEmailVerified: true } : { privateEmailVerified: true }),
       },
@@ -120,7 +120,7 @@ async function main() {
         where: { id: seededAdmin.id },
         data: {
           ...loginEmailData,
-          appRole: 'ADMINISTRATOR',
+          appRole: 'UPRAVA',
           managedSectionId: null,
         },
       });
@@ -144,7 +144,7 @@ async function main() {
           dietType: 'SVEJED',
           shirtSize: 'M',
           acceptedDocuments: true,
-          appRole: 'ADMINISTRATOR',
+          appRole: 'UPRAVA',
           homeSectionId: adminHomeSectionId,
         },
       });

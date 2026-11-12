@@ -18,7 +18,7 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/', authenticateToken, verifyCurrentRole, authorize('ADMINISTRATOR'), async (req, res) => {
+router.post('/', authenticateToken, verifyCurrentRole, authorize('UPRAVA'), async (req, res) => {
   try {
     const { name } = req.body;
     if (!name || !name.trim()) {

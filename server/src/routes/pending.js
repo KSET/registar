@@ -73,10 +73,16 @@ const PENDING_FIELD_VALIDATORS = {
 
 function parseArr(v) {
   if (Array.isArray(v)) return v;
-  if (typeof v === 'string' && v.trim()) {
-    try { return JSON.parse(v); } catch { return []; }
+  if (v === undefined || v === null || v === '') return [];
+  if (typeof v === 'string') {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
   }
-  return [];
+  return null;
 }
 function parseBool(v) {
   return v === true || v === 'true';
@@ -372,6 +378,9 @@ router.post('/', authenticateToken, (req, res) => {
       const teamIds = parseArr(req.body.teamIds);
       const drinkIds = parseArr(req.body.drinkIds);
       const allergyIds = parseArr(req.body.allergyIds);
+      if ([sectionIds, teamIds, drinkIds, allergyIds].some((ids) => ids === null)) {
+        return res.status(400).json({ error: 'Odabrane sekcije, timovi, pića ili alergije nisu ispravni.' });
+      }
       const transportVolunteer = parseBool(req.body.transportVolunteer);
       const acceptedDocuments = parseBool(req.body.acceptedDocuments);
 
@@ -562,14 +571,30 @@ router.patch('/me', authenticateToken, (req, res) => {
 
       // Non-file fields come as JSON string in `fields`, or as individual body fields.
       let fields = {};
-      if (req.body.fields) {
-        try { fields = JSON.parse(req.body.fields); } catch { fields = {}; }
+      if ('fields' in req.body) {
+        if (typeof req.body.fields !== 'string') {
+          return res.status(400).json({ error: 'Podaci prijave moraju biti poslani kao JSON tekst.' });
+        }
+        try {
+          fields = JSON.parse(req.body.fields);
+        } catch {
+          return res.status(400).json({ error: 'Podaci prijave nisu ispravan JSON.' });
+        }
+        if (!fields || typeof fields !== 'object' || Array.isArray(fields)) {
+          return res.status(400).json({ error: 'Podaci prijave nisu ispravan objekt.' });
+        }
       } else {
         fields = { ...req.body };
       }
       // Normalize array-ish fields if present
       for (const arrKey of ['sectionIds', 'teamIds', 'drinkIds', 'allergyIds']) {
-        if (arrKey in fields) fields[arrKey] = parseArr(fields[arrKey]);
+        if (arrKey in fields) {
+          const parsed = parseArr(fields[arrKey]);
+          if (parsed === null) {
+            return res.status(400).json({ error: `Polje "${arrKey}" mora biti valjani niz.` });
+          }
+          fields[arrKey] = parsed;
+        }
       }
 
       const updatedFieldData = { ...pending.fieldData };
@@ -735,13 +760,13 @@ router.get('/section', authenticateToken, verifyCurrentRole, async (req, res) =>
   try {
     const { appRole, memberId } = req.user;
 
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (!hasAdminRole(req.user) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
     let pendingList;
 
-    if (hasAdminRole(appRole)) {
+    if (hasAdminRole(req.user)) {
       pendingList = await prisma.pendingMember.findMany({
         where: { status: 'PENDING' },
         include: { homeSection: true },
@@ -796,7 +821,7 @@ router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => 
   try {
     const { appRole, memberId } = req.user;
 
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (!hasAdminRole(req.user) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -810,7 +835,7 @@ router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => 
       return res.status(404).json({ error: 'Prijava nije pronađena.' });
     }
 
-    if (appRole === 'VODITELJ_SEKCIJE') {
+    if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)) {
       const leader = await prisma.member.findUnique({
         where: { id: memberId },
         select: { managedSectionId: true },
@@ -846,7 +871,7 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
   try {
     const { appRole, memberId } = req.user;
 
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (!hasAdminRole(req.user) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -881,7 +906,7 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
     const existingMember = identity.member;
     const merged = existingMember ? mergeExistingMemberFields(pending, existingMember) : null;
 
-    if (appRole === 'VODITELJ_SEKCIJE') {
+    if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)) {
       const leader = await prisma.member.findUnique({
         where: { id: memberId },
         select: { managedSectionId: true },

@@ -121,7 +121,7 @@ function App() {
   }
 
   const appRole = user?.member?.appRole || user?.appRole;
-  const isAdmin = ['ADMINISTRATOR', 'NADZORNI'].includes(appRole);
+  const isAdmin = ['UPRAVA', 'NADZORNI'].includes(appRole) || !!user?.member?.isAdministrator;
   const isLeaderOrAdmin = appRole === 'VODITELJ_SEKCIJE' || isAdmin;
   const canViewMembers = isLeaderOrAdmin || ['SANKER', 'VODITELJ_PROGRAMA'].includes(appRole);
 

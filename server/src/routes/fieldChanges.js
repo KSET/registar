@@ -21,13 +21,13 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId } = req.user;
 
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (!hasAdminRole(req.user) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
     let changes;
 
-    if (hasAdminRole(appRole)) {
+    if (hasAdminRole(req.user)) {
       changes = await prisma.pendingFieldChange.findMany({
         where: { status: 'PENDING' },
         include: {
@@ -73,7 +73,7 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
   try {
     const { appRole, memberId } = req.user;
 
-    if (!hasAdminRole(appRole) && appRole !== 'VODITELJ_SEKCIJE') {
+    if (!hasAdminRole(req.user) && appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
     }
 
@@ -100,7 +100,7 @@ router.patch('/:id/review', authenticateToken, verifyCurrentRole, async (req, re
       return res.status(400).json({ error: 'Ovaj zahtjev je već obrađen.' });
     }
 
-    if (appRole === 'VODITELJ_SEKCIJE') {
+    if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)) {
       const leader = await prisma.member.findUnique({
         where: { id: memberId },
         select: { managedSectionId: true },

@@ -45,7 +45,7 @@ async function getExistingHonoraryNames() {
 }
 
 function requireAdmin(req, res) {
-  if (!hasAdminRole(req.user.appRole)) {
+  if (!hasAdminRole(req.user)) {
     res.status(403).json({ error: 'Nemate ovlasti.' });
     return false;
   }

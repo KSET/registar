@@ -8,7 +8,7 @@ const MAX_RELATION_IDS = 100; // generously above any real lookup table size
 function parsePositiveIntParam(value) {
   if (!/^\d+$/.test(String(value ?? ''))) return null;
   const n = parseInt(value, 10);
-  return Number.isInteger(n) && n > 0 ? n : null;
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
 function isValidDateOnly(value) {
