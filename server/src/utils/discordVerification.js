@@ -105,6 +105,7 @@ async function completeDiscordVerification(state, email, emailVerified) {
     const normalizedEmail = email.trim().toLowerCase();
     const matchingMembers = await tx.member.findMany({
       where: {
+        deletedAt: null,
         OR: [
           { privateEmail: { equals: normalizedEmail, mode: 'insensitive' } },
           { ksetEmail: { equals: normalizedEmail, mode: 'insensitive' } },
@@ -196,6 +197,7 @@ async function getDiscordVerificationStatus(state) {
     where: { state },
     select: { status: true, createdAt: true, member: {
       select: {
+        deletedAt: true,
         firstName: true,
         lastName: true,
         membershipLevel: true,
@@ -221,7 +223,7 @@ async function getDiscordVerificationStatus(state) {
 
   return {
     status: attempt.status,
-    ...(attempt.status === 'SUCCESS' && attempt.member
+    ...(attempt.status === 'SUCCESS' && attempt.member && !attempt.member.deletedAt
       ? { member: memberBotData(attempt.member) }
       : {}),
   };
@@ -229,7 +231,7 @@ async function getDiscordVerificationStatus(state) {
 
 async function getLinkedDiscordMembers() {
   const members = await prisma.member.findMany({
-    where: { discordId: { not: null } },
+    where: { discordId: { not: null }, deletedAt: null },
     select: {
       discordId: true,
       firstName: true,

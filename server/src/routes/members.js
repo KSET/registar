@@ -89,7 +89,7 @@ router.get('/me', authenticateToken, async (req, res) => {
     }
 
     const member = await prisma.member.findUnique({
-      where: { id: memberId },
+      where: { id: memberId, deletedAt: null },
       include: {
         homeSection: true,
         faculty: true,
@@ -215,7 +215,7 @@ router.patch('/me', authenticateToken, async (req, res) => {
       const relatedIdsError = await validateRelatedIds(prisma.section, result.ids, 'Pridružene sekcije');
       if (relatedIdsError) return res.status(400).json({ error: relatedIdsError });
       const currentMember = await prisma.member.findUnique({
-        where: { id: memberId },
+        where: { id: memberId, deletedAt: null },
         select: {
           homeSectionId: true,
           membershipLevel: true,
@@ -323,7 +323,7 @@ router.patch('/:id/management', authenticateToken, verifyCurrentRole, async (req
     if (targetId === null) return res.status(400).json({ error: 'Nevažeći ID člana.' });
 
     const target = await prisma.member.findUnique({
-      where: { id: targetId },
+      where: { id: targetId, deletedAt: null },
       select: {
         id: true,
         homeSectionId: true,
@@ -522,6 +522,32 @@ function toListItem(m, limited) {
   };
 }
 
+router.get('/deleted', authenticateToken, verifyCurrentRole, async (req, res) => {
+  try {
+    if (!hasAdminRole(req.user)) {
+      return res.status(403).json({ error: 'Nemate ovlasti.' });
+    }
+
+    const members = await prisma.member.findMany({
+      where: { deletedAt: { not: null } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        privateEmail: true,
+        ksetEmail: true,
+        deletedAt: true,
+      },
+      orderBy: [{ deletedAt: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }],
+    });
+
+    res.json(members);
+  } catch (err) {
+    console.error('Get deleted members error:', err);
+    res.status(500).json({ error: 'Greška na serveru.' });
+  }
+});
+
 router.get('/export', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
     const { appRole, memberId, managedSectionId } = req.user;
@@ -544,14 +570,17 @@ router.get('/export', authenticateToken, verifyCurrentRole, async (req, res) => 
     }
 
     const members = await prisma.member.findMany({
-      where: section
-        ? {
-          OR: [
-            { homeSectionId: section.id },
-            { sections: { some: { sectionId: section.id } } },
-          ],
-        }
-        : undefined,
+      where: {
+        deletedAt: null,
+        ...(section
+          ? {
+            OR: [
+              { homeSectionId: section.id },
+              { sections: { some: { sectionId: section.id } } },
+            ],
+          }
+          : {}),
+      },
       include: {
         faculty: true,
         homeSection: true,
@@ -596,6 +625,7 @@ router.get('/', authenticateToken, verifyCurrentRole, async (req, res) => {
     }
 
     const allMembers = await prisma.member.findMany({
+      where: { deletedAt: null },
       select: LIST_SELECT,
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     });
@@ -647,6 +677,7 @@ router.get('/stats', authenticateToken, verifyCurrentRole, async (req, res) => {
 
     const [members, allSections] = await Promise.all([
       prisma.member.findMany({
+        where: { deletedAt: null },
         select: {
           shirtSize: true,
           dietType: true,
@@ -741,7 +772,7 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
     }
 
     const target = await prisma.member.findUnique({
-      where: { id: targetId },
+      where: { id: targetId, deletedAt: null },
       include: {
         homeSection: true,
         faculty: true,
@@ -800,7 +831,7 @@ router.delete('/:id/certificate', authenticateToken, verifyCurrentRole, async (r
     }
 
     const target = await prisma.member.findUnique({
-      where: { id: targetId },
+      where: { id: targetId, deletedAt: null },
       select: { firstName: true, lastName: true, homeSectionId: true, certificatePath: true },
     });
     if (!target) {
@@ -880,7 +911,9 @@ router.patch('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
       return res.status(400).json({ error: 'Nevažeći ID člana.' });
     }
 
-    const target = await prisma.member.findUnique({ where: { id: targetId } });
+    const target = await prisma.member.findUnique({
+      where: { id: targetId, deletedAt: null },
+    });
     if (!target) {
       return res.status(404).json({ error: 'Član nije pronađen.' });
     }
@@ -1048,7 +1081,9 @@ router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => 
       return res.status(400).json({ error: 'Nevažeći ID člana.' });
     }
 
-    const target = await prisma.member.findUnique({ where: { id: targetId } });
+    const target = await prisma.member.findUnique({
+      where: { id: targetId, deletedAt: null },
+    });
     if (!target) {
       return res.status(404).json({ error: 'Član nije pronađen.' });
     }
@@ -1072,6 +1107,7 @@ router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => 
     if (hasAdminRole(target)) {
       const adminCount = await prisma.member.count({
         where: {
+          deletedAt: null,
           OR: [
             { appRole: { in: ['UPRAVA', 'NADZORNI'] } },
             { isAdministrator: true },
@@ -1083,21 +1119,57 @@ router.delete('/:id', authenticateToken, verifyCurrentRole, async (req, res) => 
       }
     }
 
-    await prisma.member.delete({ where: { id: targetId } });
+    await prisma.member.update({
+      where: { id: targetId },
+      data: { deletedAt: new Date() },
+    });
 
-    if (target.certificatePath) {
-      deleteCertificate(target.certificatePath);
-    }
-
-    await logAction(prisma, 'member_deleted', {
+    await logAction(prisma, 'member_soft_deleted', {
       userId: actorId,
       details: { targetId, name: `${target.firstName} ${target.lastName}` },
     });
 
-    res.json({ message: 'Član je izbrisan.' });
+    res.json({ message: 'Član je premješten među obrisane korisnike.' });
   } catch (err) {
-    await logError(prisma, 'member_delete', err, { userId: req.user.memberId, details: { targetId: req.params.id } });
+    await logError(prisma, 'member_soft_delete', err, { userId: req.user.memberId, details: { targetId: req.params.id } });
     res.status(500).json({ error: 'Greška na serveru.' });
+  }
+});
+
+router.delete('/:id/permanent', authenticateToken, verifyCurrentRole, async (req, res) => {
+  try {
+    if (!hasAdminRole(req.user)) {
+      return res.status(403).json({ error: 'Nemate ovlasti.' });
+    }
+
+    const targetId = parsePositiveIntParam(req.params.id);
+    if (targetId === null) {
+      return res.status(400).json({ error: 'Nevažeći ID člana.' });
+    }
+
+    const target = await prisma.member.findFirst({
+      where: { id: targetId, deletedAt: { not: null } },
+      select: { id: true, firstName: true, lastName: true, certificatePath: true },
+    });
+    if (!target) {
+      return res.status(404).json({ error: 'Obrisani korisnik nije pronađen.' });
+    }
+
+    await prisma.member.delete({ where: { id: targetId } });
+    if (target.certificatePath) deleteCertificate(target.certificatePath);
+
+    await logAction(prisma, 'member_permanently_deleted', {
+      userId: req.user.memberId,
+      details: { targetId, name: `${target.firstName} ${target.lastName}` },
+    });
+
+    res.json({ message: 'Korisnik je trajno izbrisan.' });
+  } catch (err) {
+    await logError(prisma, 'member_permanent_delete', err, {
+      userId: req.user.memberId,
+      details: { targetId: req.params.id },
+    });
+    res.status(500).json({ error: 'Greška pri trajnom brisanju korisnika.' });
   }
 });
 
@@ -1122,7 +1194,9 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
       return res.status(400).json({ error: 'Nevažeća administratorska oznaka.' });
     }
 
-    const target = await prisma.member.findUnique({ where: { id: targetId } });
+    const target = await prisma.member.findUnique({
+      where: { id: targetId, deletedAt: null },
+    });
     if (!target) {
       return res.status(404).json({ error: 'Član nije pronađen.' });
     }
@@ -1131,6 +1205,7 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
     if (hasAdminRole(target) && !hasAdminRole(appRole, nextIsAdministrator)) {
       const adminCount = await prisma.member.count({
         where: {
+          deletedAt: null,
           OR: [
             { appRole: { in: ['UPRAVA', 'NADZORNI'] } },
             { isAdministrator: true },
@@ -1154,6 +1229,7 @@ router.patch('/:id/role', authenticateToken, verifyCurrentRole, async (req, res)
         where: {
           appRole: 'VODITELJ_SEKCIJE',
           managedSectionId: newManagedSectionId,
+          deletedAt: null,
           id: { not: targetId },
         },
       });

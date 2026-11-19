@@ -16,12 +16,12 @@ async function verifyCurrentRole(req, res, next) {
   try {
     const current = await prisma.member.findUnique({
       where: { id: memberId },
-      select: { appRole: true, isAdministrator: true, managedSectionId: true },
+      select: { appRole: true, isAdministrator: true, managedSectionId: true, deletedAt: true },
     });
 
-    req.user.appRole = current?.appRole ?? null;
-    req.user.isAdministrator = current?.isAdministrator ?? false;
-    req.user.managedSectionId = current?.managedSectionId ?? null;
+    req.user.appRole = current && !current.deletedAt ? current.appRole : null;
+    req.user.isAdministrator = current && !current.deletedAt ? current.isAdministrator : false;
+    req.user.managedSectionId = current && !current.deletedAt ? current.managedSectionId : null;
     next();
   } catch (err) {
     console.error('Verify current role error:', err);

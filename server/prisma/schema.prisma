@@ -121,6 +121,7 @@ model Member {
   appRole            AppRole         @default(CLAN)
   isAdministrator    Boolean         @default(false)
   discordId          String?         @unique @db.VarChar(20)
+  deletedAt          DateTime?
 
   homeSectionId      Int
   homeSection        Section         @relation("HomeSection", fields: [homeSectionId], references: [id])

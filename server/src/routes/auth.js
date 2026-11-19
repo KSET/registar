@@ -18,6 +18,7 @@ const JWT_ALGORITHM = 'HS256';
 function findMemberByVerifiedEmail(email) {
   return prisma.member.findFirst({
     where: {
+      deletedAt: null,
       OR: [
         { ksetEmail: email, ksetEmailVerified: true },
         { privateEmail: email, privateEmailVerified: true },
@@ -251,7 +252,7 @@ router.get(
         // ownership the verified flag exists to capture, so this is where
         // it gets set - not a precondition members must clear beforehand.
         const unverified = await prisma.member.findFirst({
-          where: { OR: [{ ksetEmail: email }, { privateEmail: email }] },
+          where: { deletedAt: null, OR: [{ ksetEmail: email }, { privateEmail: email }] },
         });
         if (unverified) {
           const matchedKset = unverified.ksetEmail === email;
@@ -305,7 +306,9 @@ async function handleEmailLinkCallback(req, res, memberId) {
   try {
     const { email } = req.user;
 
-    const member = await prisma.member.findUnique({ where: { id: memberId } });
+    const member = await prisma.member.findUnique({
+      where: { id: memberId, deletedAt: null },
+    });
     if (!member) {
       return res.redirect(`${config.clientUrl}/?linkError=member_not_found`);
     }
@@ -368,7 +371,7 @@ router.get('/me', authenticateToken, async (req, res) => {
     }
 
     const member = await prisma.member.findUnique({
-      where: { id: memberId },
+      where: { id: memberId, deletedAt: null },
       include: {
         homeSection: true,
         faculty: true,
@@ -411,7 +414,7 @@ router.post('/refresh', authenticateToken, async (req, res) => {
     // member's session. Email-based lookup is only for the pre-membership
     // (isNewUser) case, where there's no memberId yet to trust.
     const member = memberId
-      ? await prisma.member.findUnique({ where: { id: memberId } })
+      ? await prisma.member.findUnique({ where: { id: memberId, deletedAt: null } })
       : await findMemberByVerifiedEmail(email);
 
     const tokenPayload = {

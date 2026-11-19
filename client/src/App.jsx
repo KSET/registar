@@ -11,6 +11,7 @@ import MembersList from './pages/MembersList';
 import AdminDashboard from './pages/AdminDashboard';
 import ImportPage from './pages/ImportPage';
 import HonoraryMembersPage from './pages/HonoraryMembersPage';
+import DeletedMembersPage from './pages/DeletedMembersPage';
 
 const LINK_MESSAGES = {
   success: 'E-mail je uspješno povezan.',
@@ -181,6 +182,10 @@ function App() {
             <Route
               path="/uvoz"
               element={isAdmin ? <ImportPage /> : <Navigate to="/" replace />}
+            />
+            <Route
+              path="/obrisani-korisnici"
+              element={isAdmin ? <DeletedMembersPage /> : <Navigate to="/" replace />}
             />
             <Route
               path="/pocasni-clanovi"

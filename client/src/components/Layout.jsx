@@ -51,6 +51,11 @@ export default function Layout({ isLeaderOrAdmin, canViewMembers, isAdmin, onLog
           Uvoz podataka
         </NavLink>
       )}
+      {isAdmin && (
+        <NavLink to="/obrisani-korisnici" className={navClass} onClick={closeMenu}>
+          Obrisani korisnici
+        </NavLink>
+      )}
     </>
   );
 

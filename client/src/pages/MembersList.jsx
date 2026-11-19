@@ -940,7 +940,6 @@ function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificate
   const [error, setError] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   const [certificateDeleteConfirmOpen, setCertificateDeleteConfirmOpen] = useState(false);
   const [removingCertificate, setRemovingCertificate] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -948,8 +947,6 @@ function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificate
 
   const isLimited = member.limited;
   const canRemoveCertificate = isAdmin || (canManageMembership && member.canManageMembership);
-  const memberFullName = `${member.firstName} ${member.lastName}`;
-  const canConfirmDelete = deleteConfirmationText.trim() === memberFullName;
 
   const handleOpenCert = async () => {
     try {
@@ -985,7 +982,6 @@ function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificate
   };
 
   const submitDelete = async () => {
-    if (!canConfirmDelete) return;
     setDeleteConfirmOpen(false);
     setError('');
     try {
@@ -998,7 +994,7 @@ function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificate
         setError(data.error || 'Greška pri brisanju.');
         return;
       }
-      setMessage(`${member.firstName} ${member.lastName} je izbrisan/a.`);
+      setMessage(`${member.firstName} ${member.lastName} je premješten/a među obrisane korisnike.`);
       onDeleted();
     } catch (err) {
       setError('Mrežna greška.');
@@ -1145,10 +1141,7 @@ function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificate
             )}
             <button
               className="btn-secondary border-state-error text-state-error hover:bg-state-error/10"
-              onClick={() => {
-                setDeleteConfirmationText('');
-                setDeleteConfirmOpen(true);
-              }}
+              onClick={() => setDeleteConfirmOpen(true)}
             >
               Izbriši člana
             </button>
@@ -1210,44 +1203,13 @@ function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificate
         onCancel={() => setConfirmOpen(false)}
       />
 
-      {deleteConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="card w-full max-w-sm p-6" role="dialog" aria-modal="true" aria-labelledby="delete-member-title">
-            <h3 id="delete-member-title" className="mb-2 text-lg font-semibold">Trajno brisanje člana</h3>
-            <p className="mb-4 text-sm text-content-secondary">
-              Za potvrdu upišite puno ime člana: <strong className="text-content-primary">{memberFullName}</strong>.
-            </p>
-            <input
-              className="input mb-6"
-              type="text"
-              autoComplete="off"
-              aria-label="Puno ime člana za potvrdu brisanja"
-              value={deleteConfirmationText}
-              onChange={(event) => setDeleteConfirmationText(event.target.value)}
-            />
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  setDeleteConfirmOpen(false);
-                  setDeleteConfirmationText('');
-                }}
-              >
-                Odustani
-              </button>
-              <button
-                type="button"
-                className="btn-secondary border-state-error text-state-error hover:bg-state-error/10 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={submitDelete}
-                disabled={!canConfirmDelete}
-              >
-                Trajno izbriši
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Premještanje u obrisane korisnike"
+        message={`Premjestiti ${member.firstName} ${member.lastName} među obrisane korisnike? Podatci će ostati sačuvani i korisnik se više neće prikazivati među aktivnim članovima.`}
+        onConfirm={submitDelete}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
 
       <ConfirmDialog
         open={certificateDeleteConfirmOpen}
