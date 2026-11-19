@@ -105,7 +105,7 @@ export default function DeletedMembersPage({ isAdmin }) {
                           onClick={() => restoreMember(member)}
                           disabled={restoringId !== null || deletingId !== null}
                         >
-                          {restoringId === member.id ? 'Vraćam...' : 'Vrati među aktivne'}
+                          {restoringId === member.id ? 'Vraćam...' : 'Vrati među žive'}
                         </button>
                         <button
                           type="button"
