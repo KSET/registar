@@ -524,18 +524,26 @@ function toListItem(m, limited) {
 
 router.get('/deleted', authenticateToken, verifyCurrentRole, async (req, res) => {
   try {
-    if (!hasAdminRole(req.user)) {
+    const isAdmin = hasAdminRole(req.user);
+    if (!isAdmin && req.user.appRole !== 'VODITELJ_SEKCIJE') {
       return res.status(403).json({ error: 'Nemate ovlasti.' });
+    }
+    if (!isAdmin && !req.user.managedSectionId) {
+      return res.status(403).json({ error: 'Niste voditelj nijedne sekcije.' });
     }
 
     const members = await prisma.member.findMany({
-      where: { deletedAt: { not: null } },
+      where: {
+        deletedAt: { not: null },
+        ...(!isAdmin ? { homeSectionId: req.user.managedSectionId } : {}),
+      },
       select: {
         id: true,
         firstName: true,
         lastName: true,
         privateEmail: true,
         ksetEmail: true,
+        homeSection: { select: { name: true } },
         deletedAt: true,
       },
       orderBy: [{ deletedAt: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }],
@@ -545,6 +553,61 @@ router.get('/deleted', authenticateToken, verifyCurrentRole, async (req, res) =>
   } catch (err) {
     console.error('Get deleted members error:', err);
     res.status(500).json({ error: 'Greška na serveru.' });
+  }
+});
+
+router.post('/:id/restore', authenticateToken, verifyCurrentRole, async (req, res) => {
+  try {
+    if (!hasAdminRole(req.user)) {
+      return res.status(403).json({ error: 'Nemate ovlasti.' });
+    }
+
+    const targetId = parsePositiveIntParam(req.params.id);
+    if (targetId === null) {
+      return res.status(400).json({ error: 'Nevažeći ID člana.' });
+    }
+
+    const target = await prisma.member.findFirst({
+      where: { id: targetId, deletedAt: { not: null } },
+      select: { id: true, appRole: true, managedSectionId: true },
+    });
+    if (!target) {
+      return res.status(404).json({ error: 'Obrisani korisnik nije pronađen.' });
+    }
+
+    if (target.appRole === 'VODITELJ_SEKCIJE' && target.managedSectionId) {
+      const leaderCount = await prisma.member.count({
+        where: {
+          appRole: 'VODITELJ_SEKCIJE',
+          managedSectionId: target.managedSectionId,
+          deletedAt: null,
+        },
+      });
+      if (leaderCount >= MAX_LEADERS_PER_SECTION) {
+        return res.status(400).json({ error: 'Sekcija već ima najveći dopušteni broj voditelja.' });
+      }
+    }
+
+    const restored = await prisma.member.updateMany({
+      where: { id: targetId, deletedAt: { not: null } },
+      data: { deletedAt: null },
+    });
+    if (restored.count === 0) {
+      return res.status(404).json({ error: 'Obrisani korisnik nije pronađen.' });
+    }
+
+    await logAction(prisma, 'member_restored', {
+      userId: req.user.memberId,
+      details: { targetId },
+    });
+
+    res.json({ message: 'Korisnik je vraćen među aktivne članove.' });
+  } catch (err) {
+    await logError(prisma, 'member_restore', err, {
+      userId: req.user.memberId,
+      details: { targetId: req.params.id },
+    });
+    res.status(500).json({ error: 'Greška pri vraćanju korisnika.' });
   }
 });
 

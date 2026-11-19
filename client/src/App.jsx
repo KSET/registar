@@ -185,7 +185,7 @@ function App() {
             />
             <Route
               path="/obrisani-korisnici"
-              element={isAdmin ? <DeletedMembersPage /> : <Navigate to="/" replace />}
+              element={isLeaderOrAdmin ? <DeletedMembersPage isAdmin={isAdmin} /> : <Navigate to="/" replace />}
             />
             <Route
               path="/pocasni-clanovi"

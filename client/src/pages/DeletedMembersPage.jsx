@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { authHeaders } from '../api/auth';
 import { Alert, PageContainer } from '../components/ui';
 
-export default function DeletedMembersPage() {
+export default function DeletedMembersPage({ isAdmin }) {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedMember, setSelectedMember] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [restoringId, setRestoringId] = useState(null);
 
   useEffect(() => {
     const loadDeletedMembers = async () => {
@@ -48,6 +49,26 @@ export default function DeletedMembersPage() {
     }
   };
 
+  const restoreMember = async (member) => {
+    setError('');
+    setRestoringId(member.id);
+
+    try {
+      const response = await fetch(`/api/members/${member.id}/restore`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Vraćanje korisnika nije uspjelo.');
+
+      setMembers((current) => current.filter((item) => item.id !== member.id));
+    } catch (restoreError) {
+      setError(restoreError.message || 'Mrežna greška pri vraćanju korisnika.');
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
   return (
     <PageContainer title="Obrisani korisnici" maxWidth="max-w-5xl">
       {error && <Alert kind="error">{error}</Alert>}
@@ -62,26 +83,41 @@ export default function DeletedMembersPage() {
             <thead>
               <tr>
                 <th>Ime i prezime</th>
+                <th>Matična sekcija</th>
                 <th>E-mail</th>
                 <th>Obrisan</th>
-                <th><span className="sr-only">Radnje</span></th>
+                {isAdmin && <th><span className="sr-only">Radnje</span></th>}
               </tr>
             </thead>
             <tbody>
               {members.map((member) => (
                 <tr key={member.id}>
                   <td>{member.firstName} {member.lastName}</td>
+                  <td>{member.homeSection?.name || '-'}</td>
                   <td>{member.privateEmail || member.ksetEmail || '-'}</td>
                   <td>{new Date(member.deletedAt).toLocaleDateString('hr-HR')}</td>
-                  <td className="text-right">
-                    <button
-                      type="button"
-                      className="btn-secondary border-state-error text-state-error hover:bg-state-error/10"
-                      onClick={() => setSelectedMember(member)}
-                    >
-                      Trajno izbriši
-                    </button>
-                  </td>
+                  {isAdmin && (
+                    <td>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => restoreMember(member)}
+                          disabled={restoringId !== null || deletingId !== null}
+                        >
+                          {restoringId === member.id ? 'Vraćam...' : 'Vrati među aktivne'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary border-state-error text-state-error hover:bg-state-error/10"
+                          onClick={() => setSelectedMember(member)}
+                          disabled={restoringId !== null || deletingId !== null}
+                        >
+                          Trajno izbriši
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
