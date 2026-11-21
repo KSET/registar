@@ -336,19 +336,38 @@ router.patch('/:id/management', authenticateToken, verifyCurrentRole, async (req
     if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)) {
       const leader = await prisma.member.findUnique({ where: { id: memberId }, select: { managedSectionId: true } });
       const sectionId = leader?.managedSectionId;
-      if (!sectionId || target.homeSectionId !== sectionId) {
-        return res.status(403).json({ error: 'Možete uređivati samo članove čija je matična sekcija vaša sekcija.' });
+      const isAssociated = target.sections.some(({ sectionId: associatedId }) => associatedId === sectionId);
+      if (!sectionId || (target.homeSectionId !== sectionId && !isAssociated)) {
+        return res.status(403).json({ error: 'Možete upravljati samo članovima matične ili pridružene sekcije.' });
       }
     }
 
     const data = {};
     if ('membershipLevel' in req.body) {
+      if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)) {
+        const leader = await prisma.member.findUnique({
+          where: { id: memberId },
+          select: { managedSectionId: true },
+        });
+        if (leader?.managedSectionId !== target.homeSectionId) {
+          return res.status(403).json({ error: 'Razinu članstva možete mijenjati samo članovima matične sekcije.' });
+        }
+      }
       if (!['PRIDRUZENO', 'PUNOPRAVNO', 'POCASNO', 'STARO'].includes(req.body.membershipLevel)) {
         return res.status(400).json({ error: 'Nevažeća razina članstva.' });
       }
       data.membershipLevel = req.body.membershipLevel;
     }
     if ('cardNumber' in req.body) {
+      if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)) {
+        const leader = await prisma.member.findUnique({
+          where: { id: memberId },
+          select: { managedSectionId: true },
+        });
+        if (leader?.managedSectionId !== target.homeSectionId) {
+          return res.status(403).json({ error: 'Broj iskaznice možete mijenjati samo članovima matične sekcije.' });
+        }
+      }
       const cardNumber = typeof req.body.cardNumber === 'string' ? req.body.cardNumber.trim() : '';
       const lengthError = checkFieldLength('cardNumber', cardNumber);
       if (lengthError) return res.status(400).json({ error: lengthError });
@@ -370,9 +389,34 @@ router.patch('/:id/management', authenticateToken, verifyCurrentRole, async (req
         return res.status(400).json({ error: 'Matična sekcija ne može biti i pridružena sekcija.' });
       }
 
+      if (appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)) {
+        const leader = await prisma.member.findUnique({
+          where: { id: memberId },
+          select: { managedSectionId: true },
+        });
+        const sectionId = leader?.managedSectionId;
+        if (!sectionId) return res.status(403).json({ error: 'Niste voditelj nijedne sekcije.' });
+
+        const existingWithoutManaged = target.sections
+          .map(({ sectionId: id }) => id)
+          .filter((id) => id !== sectionId)
+          .sort((a, b) => a - b);
+        const requestedWithoutManaged = result.ids
+          .filter((id) => id !== sectionId)
+          .sort((a, b) => a - b);
+        if (existingWithoutManaged.length !== requestedWithoutManaged.length
+          || existingWithoutManaged.some((id, index) => id !== requestedWithoutManaged[index])) {
+          return res.status(403).json({ error: 'Voditelj može mijenjati samo pridruživanje svojoj sekciji.' });
+        }
+      }
+
       const existingSectionIds = new Set(target.sections.map(({ sectionId }) => sectionId));
       const addedSectionIds = result.ids.filter((id) => !existingSectionIds.has(id));
-      if (target.membershipLevel === 'PRIDRUZENO' && addedSectionIds.length > 0) {
+      if (
+        (!(appRole === 'VODITELJ_SEKCIJE' && !hasAdminRole(req.user)))
+        && target.membershipLevel === 'PRIDRUZENO'
+        && addedSectionIds.length > 0
+      ) {
         const mediaSection = await prisma.section.findUnique({
           where: { name: 'Media' },
           select: { id: true },
@@ -869,11 +913,13 @@ router.get('/:id', authenticateToken, verifyCurrentRole, async (req, res) => {
 
     const sid = leader.managedSectionId;
     const isHome = target.homeSectionId === sid;
+    const isAssociated = target.sections.some(({ sectionId }) => sectionId === sid);
 
     res.json({
       ...target,
       limited: false,
-      canManageMembership: isHome,
+      canManageMembership: isHome || isAssociated,
+      managedSectionId: sid,
     });
   } catch (err) {
     console.error('Get member detail error:', err);

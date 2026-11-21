@@ -864,7 +864,7 @@ function InfoRow({ label, value, children }) {
   );
 }
 
-function MembershipManager({ member, lookups, onSaved }) {
+function MembershipManager({ member, lookups, isAdmin, onSaved }) {
   const [membershipLevel, setMembershipLevel] = useState(member.membershipLevel);
   const [cardNumber, setCardNumber] = useState(member.cardNumber || '');
   const [sectionIds, setSectionIds] = useState(
@@ -874,20 +874,33 @@ function MembershipManager({ member, lookups, onSaved }) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const managedSectionId = member.managedSectionId;
+  const managingOwnSection = !isAdmin
+    && managedSectionId
+    && String(member.homeSectionId) !== String(managedSectionId);
+  const ownSection = lookups.sections.find(
+    (section) => String(section.id) === String(managedSectionId)
+  );
+  const ownSectionAssociated = sectionIds.some(
+    (id) => String(id) === String(managedSectionId)
+  );
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
     setSaving(true);
     try {
+      const payload = managingOwnSection
+        ? { sectionIds: sectionIds.map(Number) }
+        : {
+            membershipLevel,
+            cardNumber,
+            sectionIds: sectionIds.map(Number),
+          };
       const res = await fetch(`/api/members/${member.id}/management`, {
         method: 'PATCH',
         headers: jsonHeaders(),
-        body: JSON.stringify({
-          membershipLevel,
-          cardNumber,
-          sectionIds: sectionIds.map(Number),
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -903,27 +916,50 @@ function MembershipManager({ member, lookups, onSaved }) {
   };
 
   return (
-    <Card title="Upravljanje članstvom">
+    <Card title={managingOwnSection ? 'Pridruživanje sekciji' : 'Upravljanje članstvom'}>
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-          <div className="mb-4">
-            <label className="label" htmlFor="managed-membership-level">Razina članstva</label>
-            <select id="managed-membership-level" className="input" value={membershipLevel} onChange={(event) => setMembershipLevel(event.target.value)}>
-              {MEMBERSHIP_LEVEL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          </div>
-          <div className="mb-4">
-            <label className="label" htmlFor="managed-card-number">Broj iskaznice</label>
-            <input id="managed-card-number" className="input" value={cardNumber} onChange={(event) => setCardNumber(event.target.value)} />
-          </div>
-        </div>
-        <MultiCheckDropdown
-          name="sectionIds"
-          label="Pridružene sekcije"
-          options={lookups.sections.filter((section) => String(section.id) !== String(member.homeSectionId))}
-          value={sectionIds}
-          onChange={(_, next) => setSectionIds(next)}
-        />
+        {managingOwnSection ? (
+          <label className="mb-4 flex items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-brand-orange"
+              checked={ownSectionAssociated}
+              onChange={(event) => {
+                setSectionIds((current) => {
+                  const otherIds = current.filter(
+                    (id) => String(id) !== String(managedSectionId)
+                  );
+                  return event.target.checked
+                    ? [...otherIds, Number(managedSectionId)]
+                    : otherIds;
+                });
+              }}
+            />
+            Pridružen/a sekciji {ownSection?.name || ''}
+          </label>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+              <div className="mb-4">
+                <label className="label" htmlFor="managed-membership-level">Razina članstva</label>
+                <select id="managed-membership-level" className="input" value={membershipLevel} onChange={(event) => setMembershipLevel(event.target.value)}>
+                  {MEMBERSHIP_LEVEL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </div>
+              <div className="mb-4">
+                <label className="label" htmlFor="managed-card-number">Broj iskaznice</label>
+                <input id="managed-card-number" className="input" value={cardNumber} onChange={(event) => setCardNumber(event.target.value)} />
+              </div>
+            </div>
+            <MultiCheckDropdown
+              name="sectionIds"
+              label="Pridružene sekcije"
+              options={lookups.sections.filter((section) => String(section.id) !== String(member.homeSectionId))}
+              value={sectionIds}
+              onChange={(_, next) => setSectionIds(next)}
+            />
+          </>
+        )}
         {error && <Alert kind="error">{error}</Alert>}
         <button type="submit" className="btn-primary" disabled={saving}>
           {saving ? 'Spremam...' : 'Spremi'}
@@ -1124,6 +1160,7 @@ function MemberDetail({ member, isAdmin, canManageMembership, canViewCertificate
         <MembershipManager
           member={member}
           lookups={lookups}
+          isAdmin={isAdmin}
           onSaved={(changes) => {
             onUpdated({ ...member, ...changes });
             setMessage('Podatci o članstvu su spremljeni.');
